@@ -2,6 +2,23 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## v1.1.1
+
+### Fixed
+- **Critical: the script always reported "first scan", every single
+  run, forever.** Cause: the comparison snapshot (Logic variable
+  `Overview_previous_snapshot`) was only ever *updated* if it already
+  existed — the script never actually *created* it. On any Homey
+  where that variable didn't already exist (i.e. most fresh
+  installs), it silently never got created, the snapshot was never
+  saved, and every run started from scratch with nothing to compare
+  against. Fixed by creating the variable automatically if it's
+  missing. Reported by a user on the forum running a Homey Pro 2023 —
+  thank you for flagging it. If you're upgrading from an earlier
+  version, the very next run after updating will still say "first
+  scan" (there's genuinely nothing to compare against yet at that
+  point), but the run after that will correctly show a comparison.
+
 ## v1.1
 
 ### Added
