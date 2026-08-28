@@ -1,15 +1,16 @@
-# Homey Overview v1.0 — weekly system report by email
+# Homey Overview v1.1.2 — weekly system report by email
 
 A HomeyScript that builds an HTML overview of your Homey Pro system —
-apps, flows, logic variables, devices, Z-Wave, Zigbee — and emails it to
-you. On every run it also compares against the previous run and puts a
-"Summary & Actions" section at the top of the email, highlighting what
-changed (new broken flows, apps that started crashing, WiFi/Ethernet
-drops, new users added, etc.), so you don't have to read the whole
-report every time.
+apps, flows, logic variables, devices, Z-Wave, Zigbee, backup/storage/
+memory health, moods, alarms, and more — and emails it to you. On every
+run it also compares against the previous run and puts a "Summary &
+Actions" section at the top of the email, highlighting what changed
+(new broken flows, apps that started crashing, WiFi/Ethernet drops,
+new users added, throttling, etc.), so you don't have to read the
+whole report every time.
 
 The current version number is shown in the email itself, under the
-title (e.g. "26 August 2026 at 09:00 — v1.0"), so you can tell at a
+title (e.g. "26 August 2026 at 09:00 — v1.1.2"), so you can tell at a
 glance which version generated a given report.
 
 ## What you need
@@ -54,7 +55,20 @@ glance which version generated a given report.
    controls the date/time shown in the email — the HomeyScript sandbox's
    default timezone can be UTC regardless of where your Homey actually
    is, so without this the displayed time can be off by a few hours.
-6. Save the script. (There's also a `VERSION` constant a bit further
+6. Just below the timezone, find:
+
+   ```js
+   const onlyShowDetailsOnChange = false;
+   ```
+
+   Leave this `false` if you want every email to include the full
+   detail report (System, Apps, Flows, Devices, etc.) below the
+   Summary — the default. Set it to `true` if you'd rather get a short
+   Summary-only email on runs where nothing changed, and only see the
+   full detail report on runs that actually found something. The very
+   first run always includes the full report either way, since there's
+   nothing to compare against yet.
+7. Save the script. (There's also a `VERSION` constant a bit further
    down — no need to touch it unless you start modifying the script
    yourself, in which case bumping it helps you tell reports apart.)
 
@@ -116,6 +130,79 @@ lines. Each one controls whether a particular list of names (e.g.
 disabled apps, broken flows, Z-Wave battery devices) is included in
 the email, or only counted. Set any of them to `false` if you want a
 shorter email.
+
+## What's new in v1.1
+
+- **System health:** last successful backup date/time, storage usage,
+  memory usage, and throttling/under-voltage status (Homey Pro 2023
+  only — these show as "-" on older models). Throttling and
+  under-voltage also appear in the Summary section when they start or
+  stop happening, the same way WiFi/Ethernet drops do.
+- **Images, Moods, Alarms:** counts (Moods also lists names, grouped
+  by zone). Safe to leave the Moods toggle on even if you don't use
+  Moods at all — it just reports 0, no errors.
+- **Apps by channel:** Stable / Test (beta) / Development (sideloaded)
+  breakdown, alongside the existing SDK version breakdown.
+- **Disabled vs. crashed apps** are now two separate categories
+  (previously combined into one "disabled/crashed" bucket), both in
+  the detail report and in the Summary.
+- **Group devices** (Homey Pro 2023's native Device Groups): count and
+  which member devices belong to which group.
+- **Zigbee "unknown type" devices:** Zigbee nodes that are neither a
+  Router nor an End Device now get their own category, instead of
+  silently vanishing from the Router/End Device breakdown. (Your Homey
+  hub itself typically shows up here — that's expected.)
+- **`onlyShowDetailsOnChange` setting** (see Installation step 6
+  above) for shorter emails on uneventful runs.
+
+## v1.1.1 — important bugfix
+
+If you installed v1.1 or earlier and every single email said "This is
+the first scan" — even after running the script many times — you hit
+a real bug, not something you were doing wrong. The comparison
+snapshot (a Logic variable called `Overview_previous_snapshot`) was
+only ever *updated* if it already existed; the script never actually
+*created* it. So on any Homey where that variable didn't already
+exist, it silently never got created, the snapshot was never saved,
+and every run started from scratch.
+
+This is fixed in v1.1.1: the variable is now created automatically if
+it's missing. If you're upgrading from an earlier version, just update
+the script — the very next run will still say "first scan" (since
+there's genuinely nothing to compare against yet), but the run after
+that will correctly show a comparison.
+
+## v1.1.2 — error handling for email sending
+
+Previously, if the email-sending app returned an error (e.g. an
+invalid address), the whole script would crash uncaught. As of v1.1.2,
+each recipient is sent separately with its own error handling: a
+failure for one recipient is logged and reported in the script's
+return value, without crashing the script or blocking other
+recipients. See "Troubleshooting" below for what this can and can't
+catch.
+
+## Troubleshooting
+
+**The script says "sent" but I never received the email.**
+
+That message only means Homey successfully *called* the send-email
+action — not that the email was actually delivered. If it fails
+silently after that point (e.g. an SMTP authentication error), the
+script has no way of knowing.
+
+This is almost always an account/authentication issue with your
+email-sending app itself, not with this script. Check that app's own
+setup instructions on its App Store page. For example, the "Email
+Sender" app requires a Gmail
+[app password](https://support.google.com/accounts/answer/185833)
+instead of your normal Gmail password when sending through Gmail's
+SMTP servers.
+
+A quick way to confirm it's not this script: use the "test settings"
+option in your email-sending app directly (bypassing this script
+entirely). If that test email also doesn't arrive, the issue is
+confirmed to be in that app's configuration, not here.
 
 ## Using a different email app
 
