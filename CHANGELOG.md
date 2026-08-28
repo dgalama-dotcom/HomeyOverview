@@ -2,6 +2,19 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## v1.1.3
+
+### Fixed
+- **HomeyScript script count could include a stray raw-ID entry.**
+  Some ad-hoc/inline script runs (e.g. via certain developer/debugging
+  tools' "run this code directly" feature, without saving it as a
+  proper script) leave behind an unnamed, ID-less entry. The existing
+  filter only excluded entries explicitly named `__mcp_run_*`; nameless
+  entries fell through and displayed as a raw UUID in the report and
+  in the Summary (e.g. "1 HomeyScript scripts added since previous
+  scan: 6eed9e95-..."). Now any entry without a name is excluded, the
+  same as the `__mcp_run_*` ones already were.
+
 ## v1.1.2
 
 ### Changed
