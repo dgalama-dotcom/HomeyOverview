@@ -2,6 +2,23 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## v1.1.2
+
+### Changed
+- **Email sending is now wrapped per recipient in try/catch.**
+  Previously, if the email-sending app returned an error (e.g. an
+  invalid address), the whole script crashed uncaught. Now such
+  errors are caught, logged, and reported in the script's return
+  value, and sending continues for any other recipients.
+- Note on scope: this can only catch errors the sending app actually
+  reports back as a rejected promise. Many real-world failures (e.g. a
+  bad SMTP password) happen asynchronously inside the sending app
+  itself and are never surfaced to the caller at all — in that case
+  the action call still resolves normally, the script still logs
+  "sent", and there's nothing this script can detect. Prompted by a
+  forum report where "sent" was logged but no email arrived — see the
+  README's new Troubleshooting section for how to diagnose that case.
+
 ## v1.1.1
 
 ### Fixed
