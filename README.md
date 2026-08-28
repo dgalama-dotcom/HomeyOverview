@@ -1,4 +1,4 @@
-# Homey Overview v1.1.2 — weekly system report by email
+# Homey Overview v1.1.3 — weekly system report by email
 
 A HomeyScript that builds an HTML overview of your Homey Pro system —
 apps, flows, logic variables, devices, Z-Wave, Zigbee, backup/storage/
@@ -10,7 +10,7 @@ new users added, throttling, etc.), so you don't have to read the
 whole report every time.
 
 The current version number is shown in the email itself, under the
-title (e.g. "26 August 2026 at 09:00 — v1.1.2"), so you can tell at a
+title (e.g. "26 August 2026 at 09:00 — v1.1.3"), so you can tell at a
 glance which version generated a given report.
 
 ## What you need
@@ -181,6 +181,16 @@ failure for one recipient is logged and reported in the script's
 return value, without crashing the script or blocking other
 recipients. See "Troubleshooting" below for what this can and can't
 catch.
+
+## v1.1.3 — HomeyScript script count fix
+
+The HomeyScript script count could occasionally include a stray entry
+displayed as a raw ID/UUID instead of a name. This happens when
+something runs inline script code without saving it as a proper named
+script (e.g. certain developer/debugging tools) — such a run can leave
+behind a nameless entry. As of v1.1.3, any entry without a name is
+excluded from the count and from the Summary, the same way entries
+explicitly named `__mcp_run_*` already were.
 
 ## Troubleshooting
 
