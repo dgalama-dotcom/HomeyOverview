@@ -1,4 +1,4 @@
-# Homey Overview v1.1.3 — weekly system report by email
+# Homey Overview v1.2.0 — weekly system report by email
 
 A HomeyScript that builds an HTML overview of your Homey Pro system —
 apps, flows, logic variables, devices, Z-Wave, Zigbee, backup/storage/
@@ -10,7 +10,7 @@ new users added, throttling, etc.), so you don't have to read the
 whole report every time.
 
 The current version number is shown in the email itself, under the
-title (e.g. "26 August 2026 at 09:00 — v1.1.3"), so you can tell at a
+title (e.g. "26 August 2026 at 09:00 — v1.2.0"), so you can tell at a
 glance which version generated a given report.
 
 ## What you need
@@ -191,6 +191,29 @@ script (e.g. certain developer/debugging tools) — such a run can leave
 behind a nameless entry. As of v1.1.3, any entry without a name is
 excluded from the count and from the Summary, the same way entries
 explicitly named `__mcp_run_*` already were.
+
+## v1.2.0 — Summary readability and correctness fixes
+
+Three fixes based on community forum feedback:
+
+- **Z-Wave "unreachable"/"unknown type" node changes now list which
+  nodes**, not just a bare count. Previously a change here showed
+  something like "Z-Wave unreachable nodes: 0 → 2", without saying
+  which two nodes — now it names them, like every other category.
+- **Names in the Summary are now a proper bulleted list** under each
+  finding, instead of crammed into one comma/and-joined sentence (e.g.
+  "2 Z-Wave devices added: Plug 1 and Device door"). Much easier to
+  scan when there are more than a couple of items.
+- **Fixed a systemic bug**: turning off a `show...` name-list toggle
+  (e.g. `showZwaveBatteryDevices`) used to silently break the Summary
+  comparison for that category too, since the diff logic read from the
+  same array used for on-screen display — once toggled off, that array
+  was empty and diffing against it gave wrong results. It also left a
+  misleading empty "— none —" list under a header you'd deliberately
+  turned off (e.g. "Battery devices" showing "none" when you actually
+  just hid the list). Both are fixed: the underlying data is now
+  always complete regardless of your display settings, and a toggled-
+  off section is skipped entirely (header and all) in the report.
 
 ## Troubleshooting
 
