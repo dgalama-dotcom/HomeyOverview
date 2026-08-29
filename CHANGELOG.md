@@ -2,6 +2,23 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Planned for a future release
+
+Collecting a few small items before batching them into the next
+version, rather than releasing one-off patches for each.
+
+- **Zigbee section: remove the overlap between "All Zigbee nodes" and
+  "Unknown type devices".** Currently "Unknown type devices" is a
+  subset of "All Zigbee nodes" shown twice (by design — same pattern
+  as "Apps" vs. "Disabled apps" — but noticed as confusing in
+  practice). **Decision: Option 2** — instead of a separate "Unknown
+  type devices" section, annotate each unknown-type node directly in
+  the "All Zigbee nodes" list itself (e.g. "Homey Weerterstraat
+  (unknown type)"), so there's one list instead of two overlapping
+  ones. Will use the `showZigbeeUnknownDevices` toggle to control
+  whether the "(unknown type)" annotation is shown, rather than
+  toggling a whole separate section.
+
 ## v1.2.0
 
 Based on forum feedback from SingKT.
