@@ -2,6 +2,38 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## v1.2.0
+
+Based on forum feedback from SingKT.
+
+### Added
+- **Named diffs for Z-Wave "newly unreachable" and "unknown type"
+  nodes.** Previously these only showed a bare count change
+  ("0 → 2"), not which nodes. Now shown with an actual name/ID list,
+  consistent with every other diffed category.
+
+### Changed
+- **Summary items with a name list are now rendered as a proper
+  bulleted sub-list**, instead of one comma/and-joined sentence (e.g.
+  "2 Z-Wave devices added since previous scan: Plug 1 and Device
+  door"). Much easier to scan when there are more than 1-2 items.
+
+### Fixed
+- **Systemic bug: toggling off a `show...` name-list setting used to
+  silently break the Summary diff and snapshot for that category.**
+  The diff/snapshot code was reading from the same toggle-gated array
+  used for on-screen display; once that array was emptied by the
+  toggle, comparisons against it were meaningless. The underlying data
+  is now always kept complete regardless of display settings — toggles
+  only affect what's *shown* in the detail report, never what's
+  *compared* in the Summary or saved for the next run.
+- **A toggled-off section's header stayed visible with a misleading
+  "— none —"** in the detail report (e.g. "Battery devices" showing
+  "none" when the list was simply hidden by
+  `showZwaveBatteryDevices = false`, not because there were zero
+  battery devices). Fixed: the section (header + list) is now skipped
+  entirely when its toggle is off.
+
 ## v1.1.3
 
 ### Fixed
