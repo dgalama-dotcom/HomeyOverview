@@ -2,6 +2,40 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Planned for a future release
+
+Collecting a few small items before batching them into the next
+version, rather than releasing one-off patches for each.
+
+- **Note (not a bug, for documentation/README):** it's possible for
+  some Zigbee end devices of the exact same model to consistently show
+  as "unknown type" while otherwise-identical devices show correctly
+  as "end device" — confirmed reproducible across multiple runs on one
+  user's setup (2 out of 5 identical Aqara climate sensors). This
+  reflects Homey's own Zigbee mesh/pairing-info cache for that specific
+  node, not a script issue — the script only reports what Homey's
+  Zigbee API returns. Re-pairing the affected device(s) is the
+  suggested fix, outside the script's scope. Worth a short mention in
+  the README/Troubleshooting section in a future version so this
+  doesn't get mistaken for a script bug again.
+
+- **Summary & Actions is inconsistent for Logic variables.** Every
+  other category (Apps, Flows, Devices, Z-Wave, Zigbee) names *which*
+  new items appeared when the count changes; Logic variables only ever
+  show a bare count ("Logic variables: 15 → 17 (+2)"), never which
+  variables were added. Fix: track variable *names* (not just the
+  boolean/number/string counts) between scans, the same way e.g.
+  app/flow names are tracked, and report newly created/deleted
+  variables by name in the Summary — consistent with everything else.
+
+- **Add a name list to the "🧠 Logic & Scripts" detail section.**
+  Currently that section only shows counts (Logic variables, HomeyScript
+  scripts, Better Logic variables) with no toggle-controlled name list
+  underneath, unlike almost every other section in the report. Add
+  `showLogicVariables`-style toggle(s) and a name list, consistent with
+  how e.g. Apps/Flows/Devices already list their items — this also
+  naturally supplies the name data needed for the previous point.
+
 ## v1.3.0
 
 ### Fixed
