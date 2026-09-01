@@ -55,7 +55,7 @@ const showAlarms = true; // Show amount of alarm clocks
 // is sent per recipient (rather than relying on the mail app to support a
 // combined recipient list in a single field).
 // Falls back to a default when run manually from the script editor (no args).
-const DEFAULT_MAIL_TO = 'd.galama@gmail.com';
+const DEFAULT_MAIL_TO = 'your.email@example.com';
 const rawMailTo = (args && args[0] && String(args[0]).trim()) ? String(args[0]).trim() : DEFAULT_MAIL_TO;
 const mailToList = rawMailTo.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
 
