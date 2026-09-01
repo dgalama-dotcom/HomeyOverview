@@ -2,6 +2,49 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Planned for a future release
+
+- **Sort all name lists alphabetically, consistently.** Currently only
+  some categories are sorted; the rest appear in whatever order the
+  Homey API happens to return them in. Audit of current state:
+  - **Already sorted:** Devices — Virtual, Infrared, Other; Z-Wave
+    subcategories — router, unsecure, S0, S2 (auth/unauth), battery.
+  - **NOT sorted (to fix):** Apps — all categories (SDKv2/v3,
+    updateable, disabled, crashed, Stable/Test/Development); Flows —
+    disabled/broken (both basic and advanced); Zigbee — the main "All
+    Zigbee nodes" list (only the router/end-device/unknown-type
+    *subsets* are currently sorted, not the full list); Logic & Scripts
+    — Logic variable names, HomeyScript script names, Better Logic
+    variable names; Moods; Users; Group devices composition.
+  - Side note found during this audit: a few `log()` calls (console
+    output only, not visible in the email) use a numeric sort
+    comparator (`(a, b) => a - b`) on arrays of device *names*
+    (strings) — that comparator doesn't work correctly on strings, so
+    those specific console log lines aren't actually sorted either.
+    Worth fixing at the same time, low priority since it's log-only.
+
+## Ideas for later (not scheduled)
+
+Bigger architectural considerations, distinct from the small fixes
+tracked per-version above — not committed to, just kept in mind.
+
+- **Move the ~35 `showX` toggles out of the script into a Google
+  Sheet.** Instead of hardcoded `const showX = true/false` lines, the
+  script would read current settings from a Sheet (one row per toggle,
+  an on/off checkbox column, room for a comment per toggle) via the
+  existing Google Sheets integration used for my "handleidingen"
+  app. Considered against two alternatives:
+  - *Homey dashboard tiles* (one boolean Logic variable per toggle,
+    shown as native Homey dashboard tiles): stays fully inside Homey,
+    minimal script change, but ~35 separate tiles is a lot of visual
+    clutter for a dashboard.
+  - *A real Homey app with a Settings page*: by far the nicest UX
+    (grouped, searchable, tooltips), but requires the full Apps SDK
+    rewrite already discussed separately — biggest investment.
+  - **Chosen direction if/when picked up: the Google Sheet**, as the
+    best balance of readability (a table beats dozens of tiles) versus
+    effort, and it fits the existing Sheet-based workflow.
+
 ## v1.4.0
 
 ### Added
