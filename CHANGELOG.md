@@ -2,27 +2,6 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Planned for a future release
-
-- **Sort all name lists alphabetically, consistently.** Currently only
-  some categories are sorted; the rest appear in whatever order the
-  Homey API happens to return them in. Audit of current state:
-  - **Already sorted:** Devices — Virtual, Infrared, Other; Z-Wave
-    subcategories — router, unsecure, S0, S2 (auth/unauth), battery.
-  - **NOT sorted (to fix):** Apps — all categories (SDKv2/v3,
-    updateable, disabled, crashed, Stable/Test/Development); Flows —
-    disabled/broken (both basic and advanced); Zigbee — the main "All
-    Zigbee nodes" list (only the router/end-device/unknown-type
-    *subsets* are currently sorted, not the full list); Logic & Scripts
-    — Logic variable names, HomeyScript script names, Better Logic
-    variable names; Moods; Users; Group devices composition.
-  - Side note found during this audit: a few `log()` calls (console
-    output only, not visible in the email) use a numeric sort
-    comparator (`(a, b) => a - b`) on arrays of device *names*
-    (strings) — that comparator doesn't work correctly on strings, so
-    those specific console log lines aren't actually sorted either.
-    Worth fixing at the same time, low priority since it's log-only.
-
 ## Ideas for later (not scheduled)
 
 Bigger architectural considerations, distinct from the small fixes
@@ -32,7 +11,7 @@ tracked per-version above — not committed to, just kept in mind.
   Sheet.** Instead of hardcoded `const showX = true/false` lines, the
   script would read current settings from a Sheet (one row per toggle,
   an on/off checkbox column, room for a comment per toggle) via the
-  existing Google Sheets integration used for my "handleidingen"
+  existing Google Sheets integration used for the "handleidingen"
   app. Considered against two alternatives:
   - *Homey dashboard tiles* (one boolean Logic variable per toggle,
     shown as native Homey dashboard tiles): stays fully inside Homey,
@@ -44,6 +23,36 @@ tracked per-version above — not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+
+## v1.4.1
+
+### Changed
+- **All name lists are now sorted alphabetically, consistently.**
+  Previously only Devices (Virtual/IR/Other) and the Z-Wave
+  subcategories (router/unsecure/S0/S2/battery) were sorted; Apps,
+  Flows, the main Zigbee node list, Logic variables, HomeyScript
+  scripts, Better Logic variables, Moods, Users, Group devices
+  composition, and the main "All Z-Wave devices" list were not. This
+  also affects the order of names shown in the Summary's added/removed
+  findings, since those inherit the source arrays' order.
+- **Reworded comments referring to "Homey Pro 2023" as a distinct
+  model** (forum feedback): the Pro Mini and later models share the
+  same platform/firmware as the original 2023 model, so "Homey Pro
+  2023" was an inaccurate way to describe which models get backup/
+  storage/throttling/images/group-devices support. Comments now say
+  "Homey Pro models post-2022" instead. Documentation-only — the
+  actual code check (`homeyPlatformVersion === 2`) was already
+  model-agnostic.
+
+### Fixed
+- Removed a few redundant, incorrect re-sorts in console log lines
+  (not visible in the email) that applied a numeric comparator
+  (`(a, b) => a - b`) to arrays of device *names* (strings) — that
+  comparator doesn't work on strings. The underlying data was already
+  correctly alphabetically sorted by that point; the broken re-sort
+  call is simply removed. (Numeric sorts on actual node ID numbers,
+  e.g. Z-Wave unreachable/unknown nodes, are correct as-is and
+  untouched.)
 
 ## v1.4.0
 
