@@ -2,60 +2,6 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Planned for a future release
-
-- **Homey firmware version changes aren't reported in the Summary.**
-  `report.version` (the current firmware version, e.g. "12.4.5") is
-  captured and shown in the System table of the detail report, but is
-  never compared against the previous scan — unlike almost every other
-  tracked value (WiFi, Ethernet, apps, flows, devices, etc.). If the
-  Homey is actually updated between two scans, nothing shows up in
-  Summary & Actions at all; you'd only notice by reading the full
-  detail report and remembering what the version used to say. Fix:
-  add `homeyVersion` to the snapshot, and report a Summary finding
-  when it changes, e.g. "🏠 Homey firmware updated: 12.4.5 → 12.5.0."
-  (Separate from the existing `updateAvailable` check, which reports
-  whether an update is *waiting to be installed* — this new check
-  would report when an update actually *was* installed.)
-
-- **Homey name change isn't reported.** If the Homey itself is
-  renamed (`report.homeyName`), nothing shows up in the Summary. Fix:
-  add `homeyName` to the snapshot, report a finding on change, e.g.
-  "🏠 Homey renamed: Smart Home Hub → New Name."
-
-- **Stale backup warning (threshold-based, not a scan-to-scan diff).**
-  Unlike everything else in this list, this isn't about a value
-  *changing* between two scans — it's a warning when the last backup
-  is older than some threshold, regardless of whether that changed
-  since the previous scan. Needs a new config option, e.g.
-  `staleBackupWarningDays` (number of days, e.g. `7`), and a Summary
-  finding like "⚠️ Last backup is more than 7 days old" when
-  `backupAgo` exceeds it. (Decided against a "backup succeeded since
-  previous scan" transition-style finding — the threshold warning
-  covers the useful case better.)
-
-- **Images count isn't diffed.** `report.imagesTotal` is shown in the
-  System table but never compared — add a simple count diff (same
-  pattern as Zones/Total devices today), e.g. "🖼️ Images: 3 → 5 (+2)."
-
-- **Alarms aren't diffed.** `report.alarms.total` /
-  `report.alarms.enabled` are shown but never compared. Add a count
-  diff for both, or at minimum for `total`.
-
-- **Moods aren't diffed by name, even though names are already
-  tracked.** Same gap the Logic variables fix (v1.4.0) addressed for
-  that category — `report.moods.names` exists but nothing in the
-  Summary reports which moods were added/removed. Fix: add
-  `moodNames` to the snapshot and a `diffLines` call, consistent with
-  every other named category.
-
-- **Zones are only diffed by count, not by name.** Currently
-  "📍 Zones: 8 → 9" doesn't say *which* zone was added or removed.
-  Needs zone names to be collected into a list (currently only a
-  count and an id→name lookup map for Moods exist) and a `diffLines`
-  call added, consistent with the Apps/Flows naming-consistency work
-  in v1.4.0.
-
 ## Ideas for later (not scheduled)
 
 Bigger architectural considerations, distinct from the small fixes
@@ -77,6 +23,38 @@ tracked per-version above — not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+
+## v1.5.0
+
+### Added
+- **Homey firmware version changes are now reported in the Summary.**
+  `report.version` was already captured and shown in the System table,
+  but never compared against the previous scan — unlike almost every
+  other tracked value. Now shows a Summary finding when it changes,
+  e.g. "🏠 Homey firmware updated: 12.4.5 → 12.5.0." Separate from the
+  existing `updateAvailable` check, which reports whether an update is
+  *waiting to be installed*; this reports one that actually *was*
+  installed.
+- **Homey name changes are now reported in the Summary.** If the
+  Homey itself is renamed, this now shows e.g. "🏠 Homey renamed:
+  Smart Home Hub → New Name."
+- **Stale backup warning.** New `staleBackupWarningDays` setting
+  (default `7`) — a Summary finding like "⚠️ Last backup is more than
+  7 days old" fires whenever the last backup exceeds this many days.
+  Unlike everything else in the Summary, this is a *threshold* check
+  against the current backup age, not a scan-to-scan diff — it fires
+  on every run where the backup is too old, whether or not that
+  changed since the previous scan.
+- **Images count is now diffed**, same count-only pattern as
+  Zones/Total devices, e.g. "🖼️ Images: 3 → 5 (+2)."
+- **Alarms are now diffed** — both total count and enabled count.
+- **Moods are now diffed by name**, not just counted — same gap the
+  Logic variables fix (v1.4.0) addressed for that category.
+- **Zones are now diffed by name**, not just counted. Previously
+  "📍 Zones: 8 → 9" didn't say *which* zone was added or removed; zone
+  names are now collected into a list (alongside the existing
+  id→name lookup used for Moods) and diffed consistent with the
+  Apps/Flows naming-consistency work in v1.4.0.
 
 ## v1.4.1
 
