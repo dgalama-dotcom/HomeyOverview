@@ -2,11 +2,33 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Planned for a future release
+
+- **`Homey.apps.getAppSettings({id: 'com.athom.homeyscript'})` fails
+  on SHS**, per the same tester's log ("Failed: Getting HomeyScript").
+  Already caught gracefully (no crash — HomeyScript scripts/tokens
+  just show as "-" and are skipped from the Summary diff), but worth
+  investigating whether SHS exposes this under a different app id.
+  Not picked up yet — unlike the backup-status item, the correct fix
+  here isn't clear without confirmation from an SHS user.
+
 ## Ideas for later (not scheduled)
 
 Bigger architectural considerations, distinct from the small fixes
 tracked per-version above — not committed to, just kept in mind.
 
+- **Per-section master toggle to hide a whole category, not just its
+  name lists.** Raised on the forum: with every `showZwave...`/
+  `showZigbee...` toggle set to `false`, the "📡 Z-Wave" / "📶 Zigbee"
+  section headers and summary line (e.g. "0 nodes — 0 unsecure, 0 S0,
+  …") still appear in the detail report — only the name lists beneath
+  them are toggle-gated. This is intentional and consistent with every
+  other category (Apps, Flows, Devices Overview, Logic & Scripts also
+  have no master toggle — only their name lists do), so it's not a bug
+  specific to Z-Wave/Zigbee. Adding a "hide this whole section"
+  toggle would need to apply uniformly across all categories to stay
+  consistent, which is a broader change than a single-category fix —
+  worth doing as one deliberate pass if picked up, not piecemeal.
 - **Move the ~35 `showX` toggles out of the script into a Google
   Sheet.** Instead of hardcoded `const showX = true/false` lines, the
   script would read current settings from a Sheet (one row per toggle,
@@ -23,6 +45,45 @@ tracked per-version above — not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+
+## v1.5.2
+
+### Fixed
+- **Fixed the backup-status check running (and failing) on Homey
+  Self-Hosted (SHS).** Reported on the same forum thread as the
+  WiFi/Ethernet issue above ("Failed: Getting last backup" in the
+  tester's log). Cause: the backup check was gated behind the same
+  `homeyPlatformVersion === 2` condition, which SHS also satisfies, even
+  though `Homey.backup.getOptionLastSuccessfulBackup()` isn't supported
+  there. Fixed using the same `isSelfHosted` detection added in v1.5.1
+  — but applied only to the backup check, not the whole post-2022-gated
+  block, since storage worked correctly on SHS in the tester's log and
+  keeps running as before. "Last backup" now shows "-" on SHS instead of
+  a misleading "⚠️ No backup found", and the stale-backup Summary
+  warning (added in v1.5.0) is naturally skipped there too, since it
+  only fires when a backup date is actually available. Throttling and
+  images checks are unaffected. The remaining `getAppSettings` SHS issue
+  stays in the backlog — see "Planned for a future release" above.
+
+## v1.5.1
+
+### Fixed
+- **Fixed a false "⚠️ WiFi/Ethernet disconnected" Summary finding on
+  Homey Self-Hosted (SHS).** Reported on the forum, with a SHS tester's
+  console log confirming it (WiFi/Ethernet both showed "not connected"
+  despite the report itself sending successfully). Cause: the
+  WiFi/Ethernet check was gated behind `homeyPlatformVersion === 2`,
+  assumed to mean "Homey Pro hardware post-2022" — but SHS also reports
+  `homeyPlatformVersion === 2`. SHS runs via the host machine's own
+  network stack (no separate WiFi/Ethernet radios to query), so those
+  fields come back `false` there regardless of actual connectivity.
+  SHS is now detected separately via `homeyModelName` (confirmed exact
+  string: `"Homey Self-Hosted Server"` — independent of core count,
+  since that's a separate field, not part of the model name) and
+  excluded from just the WiFi/Ethernet check; those fields now show
+  "-" on SHS instead of a false alarm. Storage, throttling, backup and
+  other post-2022-gated checks are untouched — no confirmed problem
+  with those on SHS (storage worked correctly in the tester's log).
 
 ## v1.5.0
 
