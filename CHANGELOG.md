@@ -2,20 +2,6 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Planned for a future release
-
-- **`Homey.apps.getAppSettings({id: 'com.athom.homeyscript'})` fails
-  on SHS**, per the same tester's log ("Failed: Getting HomeyScript").
-  Already caught gracefully (no crash — HomeyScript scripts/tokens
-  just show as "-" and are skipped from the Summary diff). A tester
-  confirmed the app id is correct on SHS, and that another app's
-  `getAppSettings` call (Better Logic Library) works fine there — so
-  it's not a wrong-app-id problem, and not a blanket "getAppSettings
-  doesn't work on SHS" problem either. v1.5.3 adds diagnostic logging
-  (the real error message, and the result object's keys if the API
-  call itself succeeded) to find the actual cause on the next SHS test
-  run, rather than guessing at a fix.
-
 ## Ideas for later (not scheduled)
 
 Bigger architectural considerations, distinct from the small fixes
@@ -49,6 +35,24 @@ tracked per-version above — not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+
+## v1.5.4
+
+### Fixed
+- **Fixed the HomeyScript `getAppSettings` failure on Homey Self-Hosted
+  (SHS)** — the last remaining item from the forum's SHS bug report. The
+  v1.5.3 diagnostic logging found the exact cause: on SHS, the returned
+  object only has `id`, `uri` and `scripts` — no `tokens` field at all
+  (confirmed by a forum tester's log: "Cannot convert undefined or null
+  to object — result keys: id, uri, scripts"). The script unconditionally
+  called `Object.keys(result.tokens)`, which threw when that field was
+  missing — losing the ENTIRE result, including the scripts list, which
+  was actually being returned correctly all along. Fixed by defaulting
+  `result.tokens` to `{}`: token count now correctly shows 0 on SHS
+  (matching reality — there's no tokens field there), and the HomeyScript
+  scripts list now shows up as expected. All three SHS issues from the
+  forum report are now fixed (v1.5.1 WiFi/Ethernet, v1.5.2 backup-status,
+  this one) — nothing currently planned/outstanding for SHS.
 
 ## v1.5.3
 
