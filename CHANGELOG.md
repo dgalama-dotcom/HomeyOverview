@@ -7,10 +7,14 @@ All notable changes to the Homey Overview script are documented here.
 - **`Homey.apps.getAppSettings({id: 'com.athom.homeyscript'})` fails
   on SHS**, per the same tester's log ("Failed: Getting HomeyScript").
   Already caught gracefully (no crash — HomeyScript scripts/tokens
-  just show as "-" and are skipped from the Summary diff), but worth
-  investigating whether SHS exposes this under a different app id.
-  Not picked up yet — unlike the backup-status item, the correct fix
-  here isn't clear without confirmation from an SHS user.
+  just show as "-" and are skipped from the Summary diff). A tester
+  confirmed the app id is correct on SHS, and that another app's
+  `getAppSettings` call (Better Logic Library) works fine there — so
+  it's not a wrong-app-id problem, and not a blanket "getAppSettings
+  doesn't work on SHS" problem either. v1.5.3 adds diagnostic logging
+  (the real error message, and the result object's keys if the API
+  call itself succeeded) to find the actual cause on the next SHS test
+  run, rather than guessing at a fix.
 
 ## Ideas for later (not scheduled)
 
@@ -45,6 +49,21 @@ tracked per-version above — not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+
+## v1.5.3
+
+### Changed
+- **Diagnostics only, no user-facing behavior change.** The HomeyScript
+  `getAppSettings` call (failing on SHS, see "Planned for a future
+  release" above) now logs the actual error message instead of a fixed
+  "Failed: Getting HomeyScript" text, and — if the API call itself
+  succeeded but processing its result threw — also logs the top-level
+  keys of the returned object. Since a tester confirmed the app id is
+  correct on SHS and another app's `getAppSettings` call works fine
+  there, the likely cause is that the API call succeeds but returns a
+  differently-shaped result on SHS (e.g. no `scripts`/`tokens` field),
+  which the script's own processing code wasn't expecting. This will
+  confirm that on the next SHS test run instead of guessing.
 
 ## v1.5.2
 
