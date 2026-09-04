@@ -36,6 +36,17 @@ tracked per-version above — not committed to, just kept in mind.
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
 
+## v1.5.5
+
+### Added
+- **Forum-requested: filter Homey's built-in "example-xxx" HomeyScript
+  scripts out of the HomeyScript scripts count/list by default.** Every
+  Homey ships with a set of example scripts (`example-hello-world`,
+  `example-fetch`, `example-tag`, etc.) that aren't something you added
+  yourself, so they were just cluttering the count and name list. New
+  toggle: `showExampleScripts` (default `false`) brings them back if
+  wanted.
+
 ## v1.5.4
 
 ### Fixed
