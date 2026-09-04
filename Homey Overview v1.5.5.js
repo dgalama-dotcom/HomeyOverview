@@ -1,0 +1,1629 @@
+// =====================================================================
+//  Homey Overview  —  v1.5.5
+//  Builds a full system overview (apps, flows, devices, Z-Wave, Zigbee,
+//  logic variables, HomeyScript scripts, backup/storage/memory health,
+//  moods, alarms, and more) and emails it as HTML, with a "Summary &
+//  Actions" section highlighting what changed since the last run.
+//  See the README for setup instructions.
+// =====================================================================
+
+// Set any of these from `false;` to `true;` to see the corresponding Name(s) or Node ID('s) added to the list.
+// (See further down for the DEFAULT_MAIL_TO, TIMEZONE and onlyShowDetailsOnChange settings, which you'll likely want to change.)
+const showUpdateableApps = true;
+const showDisabledApps = true; // Also covers crashed apps
+const showSDKv2Apps = true;
+const showSDKv3Apps = true;
+const showAppChannels = true; // Show apps broken down by channel: Test (beta) and Development (sideloaded)
+const showDisabledFlows = true;
+const showBrokenFlows = true;
+const showDisabledAdvancedFlows = true;
+const showBrokenAdvancedFlows = true;
+const showZwaveDevices = true;
+const showZwaveRouterDevices = true;
+const showZwaveUnsecureDevices = true;
+const showZwaveSecureS0Devices = true;
+const showZwaveSecureS2AuthenticatedDevices = true;
+const showZwaveSecureS2UnauthenticatedDevices = true;
+const showZwaveBatteryDevices = true;
+const showZwaveUnreachableNodes = true;
+const showZwaveUnknownNodes = true;
+const showZigbeeNodes = true;
+const showZigbeeRouter = true;
+const showZigbeeEndDevice = true;
+const showZigbeeUnknownDevices = true; // Annotates each Zigbee node of unclassified/unknown type directly in the "All Zigbee nodes" list (e.g. "Name (unknown type)") instead of a separate section.
+const showVirtualDevices = true;
+const showIRDevices = true;
+const showOtherDevices = true;
+const showGroupDevices = true; // Show composition of group devices (Homey Pro models post-2022 only)
+const showLogicVariables = true; // Show names of Logic variables
+const showHomeyScriptScripts = true; // Show names of HomeyScript scripts
+const showExampleScripts = false; // Include Homey's built-in "example-xxx" HomeyScript scripts (shipped with every Homey) in the count/list above. Off by default since they're just Homey's own boilerplate, not something you added.
+const showBetterLogicVariables = true; // Show names of Better Logic variables (only relevant if that app is installed)
+
+// Set any of these to see the corresponding system-health info. Backup,
+// storage, throttling/under-voltage and images are only available on
+// Homey Pro models from 2023 onward (post-2022) — the Pro Mini and later
+// share the same platform/firmware here, so this isn't really a "2023"
+// distinction. They're silently skipped (shown as "-") on older Homey Pro
+// models, so it's safe to leave these on regardless of your hardware.
+// (Homey Self-Hosted likely uses the same platform check, but this hasn't
+// been independently verified — feedback welcome.)
+const showBackup = true; // Show date/time of the last successful backup
+const showStorage = true; // Show used/free storage
+const showMemory = true; // Show used/free memory
+const showThrottle = true; // Show throttling & under-voltage status
+const showImages = true; // Show amount of images
+const showMoods = true; // Show amount (and names) of Moods — safe to leave on even if you don't use Moods at all, it'll just show 0
+const showAlarms = true; // Show amount of alarm clocks
+
+// Email settings
+// Reads the destination address(es) from the flow argument (args[0]), so this
+// script can be shared/reused without hardcoding a personal email address.
+// Multiple recipients can be supplied, separated by "," or ";" — one email
+// is sent per recipient (rather than relying on the mail app to support a
+// combined recipient list in a single field).
+// Falls back to a default when run manually from the script editor (no args).
+const DEFAULT_MAIL_TO = 'your.email@example.com'; // <-- CHANGE THIS to your own email address (only used when run manually without an argument)
+const rawMailTo = (args && args[0] && String(args[0]).trim()) ? String(args[0]).trim() : DEFAULT_MAIL_TO;
+const mailToList = rawMailTo.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+
+// Timezone used to format the date/time shown in the email (subject + header,
+// and the "last backup" date). The HomeyScript sandbox's default timezone can
+// be UTC regardless of where your Homey is actually located, so this is set
+// explicitly rather than left to the system default. CHANGE THIS to your own
+// IANA timezone name (e.g. 'America/New_York', 'Europe/London', 'Asia/Tokyo')
+// if you're not in the Netherlands.
+const TIMEZONE = 'Europe/Amsterdam';
+
+// false (default) = always include the full detail report (System, Apps,
+// Flows, Devices, etc.) below the Summary.
+// true = only include the detail report when the Summary actually found
+// something (a change or an issue) — on a "nothing changed" run, the email
+// is just the short Summary section. The first-ever run (no previous scan
+// to compare against) always includes the full detail report regardless of
+// this setting, since there's nothing to summarize yet.
+const onlyShowDetailsOnChange = false;
+
+// Number of days after which a stale last-backup is flagged in the Summary,
+// e.g. "⚠️ Last backup is more than 7 days old". Unlike almost everything
+// else in the Summary, this is NOT a scan-to-scan diff — it's a threshold
+// check against the CURRENT last-backup age, so it fires on every run where
+// the backup is too old, regardless of whether that changed since the
+// previous scan. Only relevant on Homey Pro models post-2022 (where backup
+// date is available at all — see showBackup above).
+const staleBackupWarningDays = 7;
+
+// Script version, shown in the email footer. Bump this if you modify the
+// script, so you can tell at a glance (or in a screenshot) which version
+// generated a given report.
+const VERSION = '1.5.5';
+
+// ================= Don't edit anything below here =================
+// v1.0 — initial release:
+//  - Uses the new homey-api (v2). If your Homey Pro is on the older
+//    firmware (v1 API), some fields (WiFi/Ethernet status) won't populate.
+//  - Builds an HTML report in addition to the console log, and emails it
+//    via the 'Email versturen' / 'Send Email' app (homey:app:email.sender:sendmail)
+//  - Every section has a "back to top" link (note: Gmail often doesn't
+//    support in-mail anchor navigation, other clients do)
+//  - Summary section at the top with findings vs. the previous scan.
+//    Comparison data (incl. name lists) is stored in a Logic variable
+//    called "Overview_previous_snapshot" (JSON string) — this variable is
+//    created and updated automatically, you don't need to create it yourself.
+//  - Diffs show the involved item(s), in readable sentence form:
+//    "<n> <label> since previous scan: a, b and c" — item names are bold.
+//  - Filters out HomeyScript script entries that aren't "real" saved
+//    scripts (see v1.1.3 changelog note below for the full current logic).
+//  - WiFi/Ethernet: only the TRANSITION is reported (disconnected <-> connected),
+//    not the ongoing state on every run. The System section further down
+//    always shows the live current status regardless.
+//  - Notification count change is intentionally not reported (too noisy).
+//  - Report language: English.
+//  - Destination email address(es) are passed in as a flow argument (see
+//    above), not hardcoded, so the script is easy to share/reuse. Supports
+//    multiple comma/semicolon-separated recipients.
+//  - For apps disabled/crashed and basic/advanced flows disabled/broken,
+//    a deleted item is no longer reported by the disabled/broken subset
+//    check at all. Deletions are reported exactly once, by a
+//    population-level "created/deleted" diff.
+//  - "Other devices" (everything that isn't Virtual/IR/Z-Wave/Zigbee, e.g.
+//    WiFi, Bluetooth, Thread/Matter, cloud-app devices) gets a name list,
+//    matching Virtual devices. No protocol-level health data is available
+//    for these via HomeyScript.
+//  - UniFi network-presence "devices" (driverId homey:app:com.ubnt.unifi:*,
+//    e.g. wifi-client/cable-client) are completely EXCLUDED from all counts,
+//    lists and diffs, if you have the UniFi app installed. These are
+//    per-network-client shadow devices created by the UniFi app, and churn
+//    constantly as clients (dis)connect — including them would flood the
+//    summary with noise unrelated to actual smart-home device health.
+//    Harmless to leave in if you don't have the UniFi app.
+//  - The date/time shown in the email is formatted with an explicit
+//    TIMEZONE setting (see top of script), since the HomeyScript sandbox's
+//    default timezone can be UTC regardless of your Homey's actual
+//    location.
+//
+// Added in v1.1:
+//  - Last successful backup date/time (Homey Pro models post-2022 only).
+//  - Storage usage (used/free), Memory usage (used/free).
+//  - Throttling & under-voltage status, with the CURRENT state reported as
+//    a Summary finding on transition (same pattern as WiFi/Ethernet).
+//  - Amount of images (Homey Pro models post-2022 only).
+//  - Amount (and names, grouped by zone) of Moods. Safe if you don't use
+//    Moods at all — it just reports 0, no errors.
+//  - Amount of alarm clocks (total + enabled).
+//  - Apps are now broken down by channel (Stable / Test / Development).
+//  - Apps: "disabled" and "crashed" are now reported as separate
+//    categories (previously combined into one "disabled/crashed" bucket),
+//    both in the detail report and in the Summary diff.
+//  - Group devices (native Device Groups on Homey Pro models post-2022):
+//    count and
+//    composition (which member devices belong to which group). Group
+//    container devices are counted in their own category rather than
+//    lumped into "Other devices".
+//  - Zigbee devices with an unclassified/unknown type (neither Router nor
+//    EndDevice) are now reported as their own category, rather than being
+//    silently excluded from the Router/EndDevice breakdown.
+//  - New onlyShowDetailsOnChange setting (see above) to send a short
+//    Summary-only email when nothing changed.
+//
+// Added in v1.1.1:
+//  - Fixed a bug where the script always reported "first scan", every
+//    single run, forever. Cause: the comparison snapshot (Logic
+//    variable "Overview_previous_snapshot") was only ever UPDATED if
+//    it already existed — it was never actually CREATED. So on any
+//    Homey where that variable didn't already exist, it never got
+//    created, the snapshot was silently never saved, and every run
+//    started from scratch. Fixed by creating the variable on first
+//    run if it's missing.
+//
+// Added in v1.1.2:
+//  - The email-send step is now wrapped per recipient in a try/catch.
+//    Previously, if the email-sending app returned an error (e.g. an
+//    invalid address), the whole script crashed uncaught. Now such
+//    errors are caught, logged, and reported in the script's return
+//    value, and sending continues for any other recipients. Note:
+//    this can only catch errors the sending app actually reports back
+//    — many failures (e.g. a bad SMTP password) happen asynchronously
+//    inside the sending app itself and are never surfaced to the
+//    caller at all, so this can't detect every possible failure mode
+//    (see the README's troubleshooting section).
+//
+// Added in v1.1.3:
+//  - Fixed the HomeyScript script filter to also exclude entries with NO
+//    name at all, not just ones explicitly prefixed "__mcp_run_". Some
+//    ad-hoc/inline script runs (e.g. via a tool's "run this code
+//    directly" feature, without saving it as a script) leave behind an
+//    unnamed, ID-less entry. Previously this would show up in the report
+//    — and in the Summary as "1 HomeyScript scripts added" — displayed
+//    as a raw UUID instead of being excluded like other ad-hoc runs.
+//
+// Added in v1.2.0 (thanks to forum feedback from SingKT):
+//  - Named diffs for Z-Wave "newly unreachable" and "unknown type" nodes:
+//    previously these only showed a bare count change ("0 → 2"), not WHICH
+//    nodes. Now shown as an actual name/ID list, like other categories.
+//  - Names in the Summary are now shown as a proper bulleted sub-list under
+//    each finding, instead of crammed into one comma/and-joined sentence
+//    (e.g. "Plug 1, Device door") — much easier to scan with more than a
+//    couple of items.
+//  - Fixed a systemic bug: turning off a "show...Devices/Apps/Flows" name-
+//    list toggle used to ALSO silently break the Summary diff and snapshot
+//    for that category (since the diff/snapshot code was reading from the
+//    same toggle-gated, now-empty array used for on-screen display) — and
+//    in the detail report, the section header (e.g. "Battery devices")
+//    stayed visible with a misleading "— none —" even when you'd
+//    deliberately hidden that list. Both are now fixed: the underlying
+//    data is always complete (so diffs/snapshots are always correct
+//    regardless of your display settings), and a toggled-off section's
+//    header is skipped entirely in the detail report rather than showing
+//    an empty, misleading list.
+//
+// Added in v1.3.0:
+//  - Fixed a gap in the HomeyScript "real script" filter: ad-hoc/inline
+//    runs that get auto-named after their own script ID (a raw UUID) —
+//    rather than being left unnamed or "__mcp_run_*" — were slipping
+//    through and showing up in the report/Summary as a bare UUID. The
+//    filter now also excludes any script whose name is exactly
+//    UUID-shaped.
+//  - "Other devices" and "Virtual devices" are now diffed by Homey's
+//    stable device ID instead of by name, so a rename (e.g. "Dewi" ->
+//    "Smartphone Dewi") is reported as a single "renamed" finding instead
+//    of a misleading remove+add pair. Falls back to the old name-only
+//    diff for one run if no ID-based snapshot exists yet (e.g. right
+//    after upgrading to this version) — after that, it's fully reliable.
+//  - Zigbee: removed the separate "Unknown type devices" section (it was
+//    a subset of "All Zigbee nodes" shown a second time, which was
+//    confusing in practice — same pattern as "Apps" vs. "Disabled apps").
+//    Unknown-type nodes are now annotated directly in the "All Zigbee
+//    nodes" list instead (e.g. "Homey Weerterstraat (unknown type)"),
+//    still controlled by the showZigbeeUnknownDevices toggle.
+//  - Moved the script version from the email's top subtitle line to the
+//    footer ("Automatically generated by HomeyScript vX.X.X.").
+//
+// Added in v1.4.0:
+//  - Logic variables and Better Logic variables are now tracked by NAME,
+//    not just counted by type. This fixes two long-standing
+//    inconsistencies versus every other category (Apps, Flows, Devices,
+//    Z-Wave, Zigbee):
+//     1. The Summary previously only showed a bare count change for
+//        these ("Logic variables: 15 → 17 (+2)"), never which variables
+//        were created/deleted. Now named, like everything else.
+//     2. The "🧠 Logic & Scripts" detail section previously showed only
+//        counts, with no name list underneath (unlike almost every other
+//        section). Now has toggle-controlled name lists — new toggles:
+//        showLogicVariables, showHomeyScriptScripts,
+//        showBetterLogicVariables (HomeyScript scripts already had name
+//        tracking internally for the Summary diff; this just also
+//        surfaces it in the detail report).
+//
+// Added in v1.4.1:
+//  - All name lists are now sorted alphabetically, consistently.
+//    Previously only Devices (Virtual/IR/Other) and the Z-Wave
+//    subcategories (router/unsecure/S0/S2/battery) were sorted; Apps,
+//    Flows, the main Zigbee node list, Logic variables, HomeyScript
+//    scripts, Better Logic variables, Moods, Users, Group devices
+//    composition, and the main "All Z-Wave devices" list were not.
+//    This also affects the order of names shown in the Summary's
+//    added/removed findings, since those inherit the source arrays'
+//    order.
+//  - Removed a few redundant, incorrect re-sorts in console log lines
+//    (not visible in the email) that applied a numeric comparator
+//    (a, b) => a - b to arrays of device NAMES (strings) — that
+//    comparator doesn't work on strings. The underlying data was
+//    already correctly alphabetically sorted by that point; the
+//    broken re-sort call is simply removed. (Numeric sorts on actual
+//    node ID numbers, e.g. Z-Wave unreachable/unknown nodes, are
+//    correct as-is and untouched.)
+//  - Reworded comments referring to "Homey Pro 2023" as a model name
+//    (thanks to forum feedback): the Pro Mini and later models share
+//    the same platform/firmware as the original 2023 model, so
+//    "Homey Pro 2023" was an inaccurate way to describe which models
+//    get backup/storage/throttling/images/group-devices support.
+//    Comments now say "Homey Pro models post-2022" instead. This is a
+//    documentation-only change — the actual code check
+//    (homeyPlatformVersion === 2) was already model-agnostic.
+//
+// Added in v1.5.0:
+//  - Homey firmware version changes are now reported in the Summary.
+//    report.version was already captured and shown in the System table,
+//    but never compared against the previous scan like almost everything
+//    else — an actual firmware update between two scans went completely
+//    unreported. Now shown as "🏠 Homey firmware updated: 12.4.5 →
+//    12.5.0." (separate from the existing "Update available" check, which
+//    reports an update WAITING to be installed, not one that already was).
+//  - Homey name changes are now reported in the Summary, e.g. "🏠 Homey
+//    renamed: Smart Home Hub → New Name."
+//  - New stale-backup warning: a THRESHOLD check (not a scan-to-scan
+//    diff, unlike everything else here) that flags the Summary whenever
+//    the last successful backup is older than the new
+//    staleBackupWarningDays setting (default 7 days) — regardless of
+//    whether that changed since the previous scan.
+//  - Images count is now diffed (e.g. "🖼️ Images: 3 → 5 (+2)"), same
+//    count-only pattern as Zones/Total devices.
+//  - Alarms are now diffed — both total count and enabled count.
+//  - Moods are now diffed BY NAME, not just counted — same gap the Logic
+//    variables fix (v1.4.0) addressed for that category.
+//  - Zones are now diffed BY NAME, not just counted (previously "📍
+//    Zones: 8 → 9" didn't say which zone changed). Zone names are now
+//    collected into a list alongside the existing id→name lookup map.
+//
+// Added in v1.5.1:
+//  - Fixed a false "⚠️ WiFi/Ethernet disconnected" Summary finding on
+//    Homey Self-Hosted (SHS), reported on the forum. SHS runs via the
+//    host machine's own network stack (no separate WiFi/Ethernet radios
+//    to query), so wifiConnected/ethernetConnected came back false even
+//    when the report itself had just sent successfully — this fired a
+//    false-positive critical finding on every SHS run. SHS is now
+//    detected via homeyModelName ("Homey Self-Hosted Server", confirmed
+//    from forum testing — independent of core count, since that's a
+//    separately reported field, not part of the model name) and
+//    excluded from the WiFi/Ethernet check specifically; those fields
+//    now show "-" on SHS instead of a false alarm. Storage, throttling,
+//    backup, and other post-2022-gated checks are untouched — no
+//    confirmed problem with those on SHS (storage worked correctly in
+//    the tester's log).
+//
+// Added in v1.5.2:
+//  - Fixed the backup-status check running (and failing) on Homey
+//    Self-Hosted (SHS), per the same forum report ("Failed: Getting last
+//    backup"). Homey.backup.getOptionLastSuccessfulBackup() isn't
+//    supported on SHS, unlike storage, which the tester confirmed works
+//    fine there — so only the backup check is excluded for SHS (via the
+//    same isSelfHosted detection added in v1.5.1), not the whole
+//    post-2022-gated block. "Last backup" now shows "-" on SHS instead
+//    of a misleading "⚠️ No backup found", and the stale-backup Summary
+//    warning is naturally skipped there too (it only fires when a
+//    backup date is available). Storage, throttling and images checks
+//    are untouched. The other remaining SHS item (`getAppSettings`
+//    failing) stays in the backlog — unlike this one, it's not yet
+//    clear what the correct fix is without confirmation from an SHS
+//    user (see CHANGELOG "Planned for a future release").
+//
+// Added in v1.5.3:
+//  - Diagnostics-only change, no user-facing behavior change: the
+//    HomeyScript getAppSettings call (which fails on SHS per the forum
+//    report) now logs the actual error message and, if the API call itself
+//    succeeded but processing its result threw, the top-level keys of the
+//    returned object. A forum tester confirmed the app id is correct on
+//    SHS and that another app's getAppSettings call (Better Logic Library)
+//    works fine there — so this fails for a more specific reason than "the
+//    call doesn't work on SHS", and guessing at a fix risked silently
+//    showing "0 scripts" if the real cause turns out to be a differently-
+//    shaped response rather than a missing feature. This surfaces the real
+//    cause on the next SHS test run instead.
+//
+// Added in v1.5.4:
+//  - Fixed the HomeyScript getAppSettings failure on Homey Self-Hosted
+//    (SHS) — the last remaining item from the forum's SHS bug report. The
+//    v1.5.3 diagnostic logging found the exact cause: on SHS, the returned
+//    object only has `id`, `uri` and `scripts` — no `tokens` field at all
+//    (confirmed by a forum tester's log: "Cannot convert undefined or null
+//    to object — result keys: id, uri, scripts"). The script unconditionally
+//    called Object.keys(result.tokens), which threw when that field was
+//    missing, so EVERYTHING in the try block was lost, including the
+//    scripts list, which was actually being returned correctly. Fixed by
+//    defaulting result.tokens to {} — token count now correctly shows 0 on
+//    SHS (matching reality: no tokens field), and the HomeyScript scripts
+//    list now shows up as expected. All 3 SHS issues from the forum report
+//    are now fixed (v1.5.1 WiFi/Ethernet, v1.5.2 backup-status, this one).
+//
+// Added in v1.5.5:
+//  - Forum-requested: HomeyScript scripts count/list now filters out
+//    Homey's built-in "example-xxx" scripts (example-hello-world,
+//    example-fetch, etc.) by default — these ship with every Homey and
+//    aren't something you added, so they were just clutter in the report.
+//    New toggle: showExampleScripts (default false) lets you bring them
+//    back if you want them counted.
+
+const report = {};
+
+// -------- Fetch previous snapshot (for comparison) --------
+let previousSnapshot = null;
+let snapshotVarId = null;
+try {
+  const varsForSnapshot = await Homey.logic.getVariables();
+  const snapVar = Object.values(varsForSnapshot).find(v => v.name === 'Overview_previous_snapshot');
+  if (snapVar) {
+    snapshotVarId = snapVar.id;
+    if (snapVar.value) {
+      try { previousSnapshot = JSON.parse(snapVar.value); } catch (e) { previousSnapshot = null; }
+    }
+  } else {
+    // The snapshot variable doesn't exist yet — create it now, so this run's
+    // results can actually be saved below. Without this, the variable was
+    // never created at all, snapshotVarId stayed null, the save step further
+    // down was silently skipped, and every single run incorrectly reported
+    // "first scan" forever (this run will still correctly report "first
+    // scan" since there's nothing to compare against yet — but the run
+    // AFTER this one will have something to compare against).
+    const created = await Homey.logic.createVariable({ variable: { name: 'Overview_previous_snapshot', type: 'string', value: '' } });
+    snapshotVarId = created.id;
+  }
+} catch (e) { /* couldn't read or create the snapshot variable — falls back to "first scan" behavior */ }
+
+log('--------------- Homey Pro Overview (v2 API) --------------');
+
+await Homey.system.getSystemName()
+  .then(result => { log('Homey name:', result); report.homeyName = result; })
+  .catch(() => log('Failed: Getting Homey Name'));
+
+let homeyPlatformVersion;
+let isSelfHosted = false;
+await Homey.system.getInfo()
+  .then(result => {
+    log('Homey version:', result.homeyVersion);
+    log('Homey model:', result.homeyModelName, '(' + result.cpus.length + ' core(s))');
+    homeyPlatformVersion = result.homeyPlatformVersion || 1;
+    // Homey Self-Hosted also reports homeyPlatformVersion === 2, so that
+    // flag alone isn't enough to mean "Homey Pro hardware post-2022" —
+    // detect SHS separately via its model name ("Homey Self-Hosted
+    // Server"), confirmed via forum testing. Independent of core count:
+    // that's a separate field (result.cpus.length), not part of
+    // homeyModelName.
+    isSelfHosted = /self-hosted/i.test(result.homeyModelName || '');
+    report.isSelfHosted = isSelfHosted;
+
+    const d = Math.floor(result.uptime / (3600*24));
+    const h = Math.floor(result.uptime % (3600*24) / 3600);
+    const m = Math.floor(result.uptime % 3600 / 60);
+    const s = Math.floor(result.uptime % 60);
+
+    const dDisplay = d > 0 ? d + (d == 1 ? " day, " : " days, ") : "";
+    const hDisplay = h > 0 ? h + (h == 1 ? " hour, " : " hours, ") : "";
+    const mDisplay = m > 0 ? m + (m == 1 ? " minute, " : " minutes, ") : "";
+    const sDisplay = s > 0 ? s + (s == 1 ? " second" : " seconds") : "";
+    const uptimeText = dDisplay + hDisplay + mDisplay + sDisplay;
+    log('Uptime:', result.uptime, '(' + uptimeText + ')');
+
+    report.version = result.homeyVersion;
+    report.model = result.homeyModelName;
+    report.cores = result.cpus.length;
+    report.uptimeText = uptimeText;
+
+    if (showMemory) {
+      const memTotal = result.totalmem;
+      const memFree = result.freemem || result.freememMachine;
+      if (memTotal && memFree) {
+        report.memoryTotal = memTotal;
+        report.memoryFree = memFree;
+      }
+    }
+
+    if (homeyPlatformVersion === 2) {
+      // WiFi/Ethernet: not meaningful on Homey Self-Hosted, which runs via
+      // the host machine's own network stack (no separate WiFi/Ethernet
+      // radios to query) — wifiConnected/ethernetConnected come back false
+      // there even when the connection obviously works (e.g. the report
+      // itself just sent successfully). Left as "-" on SHS instead of
+      // firing a false "⚠️ disconnected" Summary finding.
+      if (!isSelfHosted) {
+        log('WiFi:', (result.wifiConnected) ? 'connected' : 'not connected');
+        log('Ethernet:', (result.ethernetConnected) ? 'connected' : 'not connected');
+        report.wifi = result.wifiConnected;
+        report.ethernet = result.ethernetConnected;
+      }
+
+      if (showThrottle) {
+        report.throttled = result.videoCoreThrottleOccured;
+        report.throttledCurrent = result.videoCoreThrottleCurrently;
+        report.undervoltage = result.videoCoreUndervoltageOccured;
+        report.undervoltageCurrent = result.videoCoreUnderVoltageCurrently;
+      }
+    }
+  })
+  .catch(() => log('Failed: Getting Homey Stats'));
+
+await Homey.updates.getUpdates()
+  .then(result => {
+    report.updateAvailable = result.length > 0 ? result[0].version : null;
+    if(result.length > 0) {
+      log('Update available:', result[0].version);
+    } else {
+      log('Update available: None');
+    }
+  })
+  .catch(() => log('Failed: Getting Updates'));
+
+// Not meaningful on Homey Self-Hosted (SHS): Homey.backup.getOptionLastSuccessfulBackup()
+// fails there ("Failed: Getting last backup"), reported on the forum. Unlike
+// storage (which works fine on SHS per the tester's log), backup status
+// isn't tracked the same way on SHS, so this check is excluded specifically
+// — storage/throttling/images below are untouched and keep running there.
+if (showBackup && homeyPlatformVersion === 2 && !isSelfHosted && Homey.backup !== undefined) {
+  await Homey.backup.getOptionLastSuccessfulBackup()
+    .then(result => {
+      if (result && result.value) {
+        const backupDate = new Date(result.value);
+        const nowForBackup = new Date();
+        const diffMs = nowForBackup - backupDate;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+        report.backupDate = backupDate.toLocaleString('en-GB', { timeZone: TIMEZONE, day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        report.backupAgo = diffDays + ' day' + (diffDays === 1 ? '' : 's') + ', ' + diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+        report.backupAgoDays = diffDays; // raw day count, used for the staleBackupWarningDays threshold check below
+        log('Last backup:', report.backupDate, '(' + report.backupAgo + ')');
+      }
+    })
+    .catch(() => log('Failed: Getting last backup'));
+}
+
+if (showStorage && homeyPlatformVersion === 2) {
+  await Homey.system.getStorageInfo()
+    .then(result => {
+      report.storageTotal = result.total;
+      report.storageFree = result.free;
+      log('Storage:', result.total, 'total,', result.free, 'free');
+    })
+    .catch(() => log('Failed: Getting storage information'));
+}
+
+log('\r\n------------------ Main ---------------------');
+
+await Homey.users.getUsers()
+  .then(result => {
+    let owner = 0, manager = 0, user = 0, guest = 0;
+    const names = [];
+    Object.keys(result).forEach(function(key) {
+      if (result[key].role === 'owner') owner++;
+      if (result[key].role === 'manager') manager++;
+      if (result[key].role === 'user') user++;
+      if (result[key].role === 'guest') guest++;
+      names.push(result[key].name || result[key].email || result[key].id);
+    });
+    report.users = { total: Object.keys(result).length, owner, manager, user, guest, names: names.sort() };
+    log(Object.keys(result).length, 'Users', '('  + owner + ' owner, ' + manager + ' manager(s), ' + user + ' user(s), ' + guest + ' guest(s))');
+  })
+  .catch(() => log('Failed: Getting Users'));
+
+await Homey.apps.getApps()
+  .then(result => {
+    let sdkv2 = 0, sdkv2Apps = [], sdkv3 = 0, sdkv3Apps = [], updateable = 0, updateableApps = [];
+    let disabled = 0, disabledApps = [], crashed = 0, crashedApps = [];
+    let stable = 0, stableApps = [], test = 0, testApps = [], dev = 0, devApps = [];
+    const allNames = [];
+
+    Object.keys(result).forEach(function(key) {
+      const app = result[key];
+      allNames.push(app.name);
+
+      if (app.updateAvailable) {
+        updateable++;
+        updateableApps.push(app.name);
+      }
+      if (app.sdk === 2) {
+        sdkv2++;
+        sdkv2Apps.push(app.name);
+      }
+      if (
+        app.sdk === 3
+        || homeyPlatformVersion === 2
+      ) {
+        sdkv3++;
+        sdkv3Apps.push(app.name);
+      }
+
+      // Disabled vs crashed: newer firmware exposes a `state` field
+      // ('running' | 'stopped' | 'crashed'); older firmware only has a
+      // boolean `ready`, which can't distinguish "disabled" from "crashed"
+      // — in that case everything not-ready is reported as "disabled".
+      if (app.state) {
+        if (app.state === 'crashed') {
+          crashed++;
+          crashedApps.push(app.name);
+        } else if (app.state !== 'running' || app.enabled === false) {
+          disabled++;
+          disabledApps.push(app.name);
+        }
+      } else if (!app.ready || app.enabled === false) {
+        disabled++;
+        disabledApps.push(app.name);
+      }
+
+      // Channel: Test (beta) and Development (sideloaded via devkit). Apps
+      // not matching either are the (unlisted, majority) Stable apps.
+      if (app.origin === 'devkit_install') {
+        dev++;
+        devApps.push(app.name);
+      } else if (app.channel === 'stable' || app.channel === 'live') {
+        stable++;
+        stableApps.push(app.name);
+      }
+      if (app.channel === 'beta' || app.channel === 'test') {
+        test++;
+        testApps.push(app.name);
+      }
+    });
+
+    report.apps = {
+      total: Object.keys(result).length,
+      allNames,
+      sdkv2, sdkv2Apps: sdkv2Apps.sort(),
+      sdkv3, sdkv3Apps: sdkv3Apps.sort(),
+      updateable, updateableApps: updateableApps.sort(),
+      disabled, disabledApps: disabledApps.sort(),
+      crashed, crashedApps: crashedApps.sort(),
+      stable, stableApps: stableApps.sort(),
+      test, testApps: testApps.sort(),
+      dev, devApps: devApps.sort()
+    };
+
+    if (showSDKv2Apps) { log('---------------------------------------------'); log('SDKv2 apps:'); log(sdkv2Apps.join('\r\n')); log('---------------------------------------------'); }
+    if (showSDKv3Apps) { log('---------------------------------------------'); log('SDKv3 apps:'); log(sdkv3Apps.join('\r\n')); log('---------------------------------------------'); }
+    if (showUpdateableApps) { log('---------------------------------------------'); log('Updateable apps:'); log(updateableApps.join('\r\n')); log('---------------------------------------------'); }
+    if (showDisabledApps) {
+      log('---------------------------------------------'); log('Disabled apps:'); log(disabledApps.join('\r\n')); log('---------------------------------------------');
+      log('---------------------------------------------'); log('Crashed apps:'); log(crashedApps.join('\r\n')); log('---------------------------------------------');
+    }
+
+    log(Object.keys(result).length, 'Apps', '('  + stable + ' Stable, ' + test + ' Test, ' + dev + ' Development, ' + sdkv2 + ' SDKv2, '  + sdkv3 + ' SDKv3, '  + updateable + ' updateable, ' + disabled + ' disabled, ' + crashed + ' crashed)');
+  })
+  .catch(() => log('Failed: Getting Apps'));
+
+let zoneNameById = {};
+await Homey.zones.getZones()
+  .then(result => {
+    report.zonesTotal = Object.keys(result).length;
+    const zoneNames = [];
+    Object.keys(result).forEach(function(key) {
+      zoneNameById[result[key].id] = result[key].name;
+      zoneNames.push(result[key].name);
+    });
+    report.zoneNames = zoneNames.sort();
+    log(Object.keys(result).length, 'Zones');
+  })
+  .catch(() => log('Failed: Getting Zones'));
+
+await Homey.notifications.getNotifications()
+  .then(result => { report.notificationsTotal = Object.keys(result).length || 0; log(Object.keys(result).length || 0, 'Notifications (Timeline)'); })
+  .catch(() => log('Failed: Getting Notifications'));
+
+await Homey.logic.getVariables()
+  .then(result => {
+    let boolean = 0, number = 0, string = 0;
+    const names = [];
+    Object.keys(result).forEach(function(key) {
+      const v = result[key];
+      if (v.type === 'boolean') boolean++;
+      if (v.type === 'number') number++;
+      if (v.type === 'string') string++;
+      names.push(v.name);
+    });
+    report.logicVars = { total: Object.keys(result).length, boolean, number, string, names: names.sort() };
+    log(Object.keys(result).length, 'Logic Variables', '(' + boolean + ' boolean (yes/no), ' + number + ' number, ' + string + ' string)');
+  })
+  .catch(() => log('Failed: Getting Variables'));
+
+await Homey.flow.getFlows()
+  .then(result => {
+    let disabled = 0, broken = 0, disabledNames = [], brokenNames = [];
+    const allNames = [];
+    Object.keys(result).forEach(function(key) {
+      allNames.push(result[key].name);
+      if (!result[key].enabled) { disabled++; disabledNames.push(result[key].name); }
+      if (result[key].broken) { broken++; brokenNames.push(result[key].name); }
+    });
+
+    report.flows = {
+      total: Object.keys(result).length, broken, disabled,
+      allNames,
+      disabledNames: disabledNames.sort(),
+      brokenNames: brokenNames.sort()
+    };
+
+    if (showDisabledFlows) { log('---------------------------------------------'); log('Disabled flow names:'); log(disabledNames.join('\r\n')); log('---------------------------------------------'); }
+    if (showBrokenFlows) { log('---------------------------------------------'); log('Broken flow names:'); log(brokenNames.join('\r\n')); log('---------------------------------------------'); }
+
+    log(Object.keys(result).length, 'Flows', '('  + broken + ' broken, ' + disabled + ' disabled)');
+  })
+  .catch(() => log('Failed: Getting Flows'));
+
+await Homey.flow.getAdvancedFlows()
+  .then(result => {
+    let disabled = 0, broken = 0, disabledNames = [], brokenNames = [];
+    const allNames = [];
+    Object.keys(result).forEach(function(key) {
+      allNames.push(result[key].name);
+      if (!result[key].enabled) { disabled++; disabledNames.push(result[key].name); }
+      if (result[key].broken) { broken++; brokenNames.push(result[key].name); }
+    });
+
+    report.advancedFlows = {
+      total: Object.keys(result).length, broken, disabled,
+      allNames,
+      disabledNames: disabledNames.sort(),
+      brokenNames: brokenNames.sort()
+    };
+
+    if (showDisabledAdvancedFlows) { log('---------------------------------------------'); log('Disabled advanced flow names:'); log(disabledNames.join('\r\n')); log('---------------------------------------------'); }
+    if (showBrokenAdvancedFlows) { log('---------------------------------------------'); log('Broken advanced flow names:'); log(brokenNames.join('\r\n')); log('---------------------------------------------'); }
+
+    log(Object.keys(result).length, 'Advanced flows', '('  + broken + ' broken, ' + disabled + ' disabled)');
+  })
+  .catch(() => log('Failed: Getting Advanced Flows'));
+
+if (showImages && homeyPlatformVersion === 2 && Homey.images !== undefined) {
+  await Homey.images.getImages()
+    .then(result => {
+      const images = Object.keys(result).filter(key => result[key].id !== 'dummy');
+      report.imagesTotal = images.length;
+      log(images.length, 'Images');
+    })
+    .catch(() => log('Failed: Getting images'));
+}
+
+// Moods: safe even if the Moods feature isn't in use at all (0 moods is a
+// perfectly normal, error-free result) or if the API isn't available on
+// your Homey version — in both cases this just reports 0 without erroring.
+if (showMoods) {
+  if (Homey.moods !== undefined) {
+    await Homey.moods.getMoods()
+      .then(result => {
+        const moodNames = Object.keys(result || {}).map(key => {
+          const mood = result[key];
+          const zoneName = zoneNameById[mood.zone] || 'Unknown zone';
+          return zoneName + ' : ' + mood.name;
+        });
+        report.moods = { total: moodNames.length, names: moodNames.sort(), unavailable: false };
+        log(moodNames.length, 'Moods');
+      })
+      .catch(() => {
+        report.moods = { total: 0, names: [], unavailable: false };
+        log('Failed: Getting Moods');
+      });
+  } else {
+    report.moods = { total: 0, names: [], unavailable: true };
+    log('Moods: feature not available on this Homey');
+  }
+}
+
+if (showAlarms && Homey.alarms !== undefined) {
+  await Homey.alarms.getAlarms()
+    .then(result => {
+      let enabled = 0;
+      Object.keys(result).forEach(function(key) {
+        if (result[key].enabled) enabled++;
+      });
+      report.alarms = { total: Object.keys(result).length, enabled };
+      log(Object.keys(result).length, 'Alarms', '(' + enabled + ' enabled)');
+    })
+    .catch(() => log('Failed: Getting alarms'));
+}
+
+await Homey.apps.getAppSettings({id: 'com.athom.homeyscript'})
+  .then(result => {
+    // Excludes entries that aren't "real" saved scripts:
+    //  - "__mcp_run_*" named entries: leftovers from ad-hoc (unsaved)
+    //    script runs via an MCP bridge.
+    //  - Entries with NO name at all: ad-hoc/inline script runs (e.g. via
+    //    a tool's "run this code directly" feature) can leave behind an
+    //    unnamed, ID-less entry. Without this filter, such an entry would
+    //    display as a raw UUID in the report and Summary diff instead of
+    //    being excluded like the __mcp_run_* ones are.
+    //  - Entries whose name is EXACTLY UUID-shaped: some ad-hoc/inline
+    //    runs (e.g. via an MCP bridge's "run this code directly" feature,
+    //    without an explicit name) get auto-named after their own script
+    //    ID instead of being left unnamed. These slip past the two checks
+    //    above (they DO have a name, and it doesn't start with
+    //    "__mcp_run"), so they need their own check. A real, human-given
+    //    script name never happens to be a bare UUID, so this is safe.
+    //  - "example-*" named entries (unless showExampleScripts is true):
+    //    Homey ships every install with a set of built-in example scripts
+    //    (example-hello-world, example-fetch, etc.) — these aren't
+    //    something you added, so they're filtered out of the count/list
+    //    by default too. Forum-requested in v1.5.5.
+    try {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const realEntries = Object.entries(result.scripts).filter(([id, s]) => s && s.name && !s.name.startsWith('__mcp_run') && !UUID_RE.test(s.name) && (showExampleScripts || !s.name.startsWith('example-')));
+      const names = realEntries.map(([id, s]) => s.name).sort();
+      // result.tokens is missing entirely on Homey Self-Hosted (confirmed via
+      // forum testing: result there only has id/uri/scripts, no tokens key)
+      // — defaulted to {} so tokens simply shows as 0 there instead of
+      // throwing (see v1.5.4 changelog note below).
+      const tokenCount = Object.keys(result.tokens || {}).length || 0;
+      report.homeyscript = { scripts: names.length, tokens: tokenCount, scriptNames: names };
+      log(names.length, 'HomeyScript scripts', '(' + tokenCount + ' tokens/tags)')
+    } catch (procErr) {
+      // Diagnostic, added in v1.5.3 and kept as a safety net: the API call
+      // itself succeeded (we're in .then), but processing its result threw
+      // anyway — logs the actual error and the top-level keys of `result`
+      // instead of failing silently, in case some other SHS/Homey Pro
+      // response shape difference turns up in the future.
+      log('Failed: Processing HomeyScript settings —', (procErr && procErr.message) || procErr, '— result keys:', result ? Object.keys(result).join(', ') : 'no result');
+    }
+  })
+  .catch(err => {
+    // If THIS fires instead of the try/catch above, the API call itself
+    // failed (rather than succeeding with an unexpected shape) — logging
+    // the real error message here too, for the same diagnostic reason.
+    log('Failed: Getting HomeyScript —', (err && err.message) || err);
+  })
+
+await Homey.apps.getAppSettings({id: 'net.i-dev.betterlogic'})
+  .then(result => {
+    let boolean = 0, number = 0, string = 0;
+    const names = [];
+    Object.keys(result.variables).forEach(function(key) {
+      const v = result.variables[key];
+      if (v.type === 'boolean') boolean++;
+      if (v.type === 'number') number++;
+      if (v.type === 'string') string++;
+      // Fallback to the object key if this variable has no explicit .name
+      // field — Better Logic Library's settings schema isn't officially
+      // documented, so this is a defensive default rather than an assumption.
+      names.push(v.name || key);
+    });
+    report.betterLogic = { total: Object.keys(result.variables).length, boolean, number, string, names: names.sort() };
+    log(Object.keys(result.variables).length, 'Better Logic Variables', '(' + boolean + ' boolean (yes/no), ' + number + ' number, ' + string + ' string)');
+  })
+  .catch(() => {}); // No Better Logic variables or app not installed
+
+log('\r\n----------------- Devices -------------------');
+let allDevices = 0, zwave = 0, zwaveDevices = [], zwaveNodes = [], zwaveRouter = 0, zwaveRouterDevices = [], zwaveBattery = 0, zwaveBatteryDevices = [], zwaveSx = 0, zwaveSxDevices = [], zwaveS0 = 0, zwaveS0Devices = [], zwaveS2Auth = 0, zwaveS2AuthDevices = [], zwaveS2Unauth = 0, zwaveS2UnauthDevices = [];
+
+await Homey.devices.getDevices()
+  .then(result => {
+    let virtual = 0, ir = 0, other = 0, virtualNames = [], irNames = [], otherNames = [], unifiExcluded = 0;
+    // device.id -> device.name maps for "Other" and "Virtual" devices. Used
+    // for reliable rename detection: Homey's device.id stays stable across
+    // a rename, only device.name changes, so diffing by ID (instead of by
+    // name) lets a rename be reported as "renamed" instead of a misleading
+    // remove+add pair.
+    let virtualById = {}, otherById = {};
+    let groupDevices = {}; // groupId -> { name, devices: [] }, Homey Pro models post-2022 only
+
+    Object.keys(result).forEach(function(key) {
+      const device = result[key];
+      const driverId = device.driverId || '';
+
+      // UniFi network-presence devices: excluded entirely (see header comment)
+      if (driverId.startsWith('homey:app:com.ubnt.unifi')) {
+        unifiExcluded++;
+        return;
+      }
+
+      // Native Homey Device Groups (Homey Pro models post-2022): the group "container" device
+      // gets its own category (Group devices) rather than falling into
+      // "Other devices". Any device — of any category — that belongs to a
+      // group also gets recorded into that group's member list below,
+      // independent of its own primary categorization.
+      if (homeyPlatformVersion === 2 && driverId.includes('homey:virtualdrivergroup')) {
+        if (!groupDevices[device.id]) groupDevices[device.id] = { name: device.name, devices: [] };
+        else groupDevices[device.id].name = device.name;
+      }
+      else if (driverId === 'homey:virtualdriverinfrared:driver') {
+        ir++; irNames.push(device.name);
+      }
+      else if (driverId.startsWith('homey:virtualdriver')) {
+        virtual++; virtualNames.push(device.name); virtualById[device.id] = device.name;
+      }
+      else if (
+        driverId.startsWith('homey:app:com.arjankranenburg.virtual')
+        || driverId.startsWith('homey:app:nl.qluster-it.DeviceCapabilities')
+        || driverId.startsWith('homey:app:nl.fellownet.chronograph')
+        || driverId.startsWith('homey:app:net.i-dev.betterlogic')
+      ) {
+        virtual++; virtualNames.push(device.name); virtualById[device.id] = device.name;
+      }
+      else if (device.flags.includes('zwaveRoot')) {
+        zwave++;
+        zwaveDevices.push(device.name);
+        zwaveNodes.push(Number(device.settings.zw_node_id));
+
+        if (device.settings.zw_battery === '✓' || device.energyObj.batteries) {
+          zwaveBattery++; zwaveBatteryDevices.push(device.name);
+        } else {
+          zwaveRouter++; zwaveRouterDevices.push(device.name);
+        }
+
+        if (device.settings.zw_secure === '⨯') {
+          zwaveSx++; zwaveSxDevices.push(device.name);
+        } else if (device.settings.zw_secure === '✓' || device.settings.zw_secure === 'S0') {
+          zwaveS0++; zwaveS0Devices.push(device.name);
+        } else if (device.settings.zw_secure === 'S2 (Authenticated)') {
+          zwaveS2Auth++; zwaveS2AuthDevices.push(device.name);
+        } else if (device.settings.zw_secure === 'S2 (Unauthenticated)') {
+          zwaveS2Unauth++; zwaveS2UnauthDevices.push(device.name);
+        }
+      }
+      else if (!device.flags.includes('zwave') && !device.flags.includes('zigbee')) {
+        other++;
+        otherNames.push(device.name); otherById[device.id] = device.name;
+      }
+
+      // Group membership (independent of the categorization above)
+      if (homeyPlatformVersion === 2 && device.group) {
+        if (!groupDevices[device.group]) groupDevices[device.group] = { name: null, devices: [] };
+        groupDevices[device.group].devices.push(device.name);
+      }
+    });
+
+    const groupsTotal = Object.keys(groupDevices).length;
+    Object.values(groupDevices).forEach(g => g.devices.sort());
+
+    report.devices = {
+      virtual, virtualNames: virtualNames.sort(), virtualById,
+      ir, irNames: irNames.sort(),
+      other, otherNames: otherNames.sort(), otherById,
+      unifiExcluded,
+      groupsTotal, groups: groupDevices
+    };
+
+    if (showVirtualDevices) { log('---------------------------------------------'); log('Virtual devices:'); log(virtualNames.join('\r\n')); log('---------------------------------------------'); }
+    if (showIRDevices) { log('---------------------------------------------'); log('Infrared devices:'); log(irNames.join('\r\n')); log('---------------------------------------------'); }
+    if (showOtherDevices) { log('---------------------------------------------'); log('Other devices:'); log(otherNames.join('\r\n')); log('---------------------------------------------'); }
+
+    allDevices += virtual + ir + other + zwave + groupsTotal;
+    log(virtual, 'Virtual devices');
+    log(ir, 'Infrared (database) devices');
+    log(other, 'Other devices');
+    log(groupsTotal, 'Group devices');
+    log(unifiExcluded, 'UniFi network-presence devices excluded');
+  })
+  .catch(() => log('Failed: Getting Devices'));
+
+await Homey.zwave.getState()
+  .then(result => {
+    let unknownNodes = result.zw_state.nodes.filter((el) => !zwaveNodes.includes(el)).sort((a, b) => a - b);
+    unknownNodes.shift();
+    const unreachableSorted = result.zw_state.noAckNodes.sort((a,b)=>a-b);
+
+    // Note: none of these lists are toggle-gated here — the showZwave...
+    // toggles only control whether a list is RENDERED in the detail report
+    // (see the HTML-building section further down). Keeping the underlying
+    // data always complete here ensures the Summary diff and the snapshot
+    // saved for the next run are always correct, even for a category whose
+    // on-screen list you've turned off.
+    report.zwave = {
+      total: zwave,
+      devices: zwaveDevices.sort(),
+      router: zwaveRouter, routerDevices: zwaveRouterDevices.sort(),
+      unsecure: zwaveSx, unsecureDevices: zwaveSxDevices.sort(),
+      s0: zwaveS0, s0Devices: zwaveS0Devices.sort(),
+      s2auth: zwaveS2Auth, s2authDevices: zwaveS2AuthDevices.sort(),
+      s2unauth: zwaveS2Unauth, s2unauthDevices: zwaveS2UnauthDevices.sort(),
+      battery: zwaveBattery, batteryDevices: zwaveBatteryDevices.sort(),
+      unreachable: unreachableSorted.length,
+      unreachableNodes: unreachableSorted,
+      unknown: unknownNodes.length,
+      unknownNodes: unknownNodes
+    };
+
+    if (showZwaveDevices) { log('---------------------------------------------'); log('Z-Wave devices:'); log(zwaveDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveRouterDevices) { log('---------------------------------------------'); log('Z-Wave router devices:'); log(zwaveRouterDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveUnsecureDevices) { log('---------------------------------------------'); log('Z-Wave unsecure devices:'); log(zwaveSxDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveSecureS0Devices) { log('---------------------------------------------'); log('Z-Wave secure (S0) devices:'); log(zwaveS0Devices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveSecureS2AuthenticatedDevices) { log('---------------------------------------------'); log('Z-Wave secure (S2) authenticated devices:'); log(zwaveS2AuthDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveSecureS2UnauthenticatedDevices) { log('---------------------------------------------'); log('Z-Wave secure (S2) Unauthenticated devices:'); log(zwaveS2UnauthDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveBatteryDevices) { log('---------------------------------------------'); log('Z-Wave battery devices:'); log(zwaveBatteryDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZwaveUnreachableNodes) { log('---------------------------------------------'); log('Unreachable nodes:'); log('Node ID:', result.zw_state.noAckNodes.sort((a, b) => a - b).join('\r\nNode ID: ')); log('---------------------------------------------'); }
+    if (showZwaveUnknownNodes) { log('---------------------------------------------'); log('Unknown nodes:'); log('Node ID:', unknownNodes.join('\r\nNode ID: ')); log('---------------------------------------------'); }
+
+    log(zwave, 'Z-Wave nodes', '(' + zwaveSx + ' Unsecure, ' + zwaveS0 + ' Secure (S0), ' + zwaveS2Auth + ' Secure (S2 Authenticated), ' + zwaveS2Unauth + ' Secure (S2 Unauthenticated), ' + zwaveRouter + ' router, ' + zwaveBattery + ' battery, ' + result.zw_state.noAckNodes.length + ' unreachable, ' + unknownNodes.length + ' Unknown node(s))')
+  })
+  .catch(() => { log('Failed: Getting Z-Wave State'); report.zwave = { failed: true }; });
+
+await Homey.zigbee.getState()
+  .then(result => {
+    // zigbeeDevices: raw, unannotated names — used for report.zigbee.nodes
+    // and the Summary/snapshot diff, so a node's unknown/known-type status
+    // never itself looks like a rename in the diff.
+    // zigbeeNodesDisplay: same list, but with unknown-type nodes annotated
+    // ("(unknown type)") for the detail-report rendering — see v1.3.0
+    // changelog note above for why this replaced a separate section.
+    let zigbeeDevices = [], zigbeeNodesDisplay = [], router = 0, routerDevices = [], endDevice = 0, endDevices = [], unknownType = 0, unknownTypeDevices = [];
+
+    Object.keys(result.nodes).forEach(function(key) {
+      const node = result.nodes[key];
+      zigbeeDevices.push(node.name);
+      const nodeType = (node.type || '').toLowerCase();
+      if (nodeType === 'router') {
+        router++; routerDevices.push(node.name);
+        zigbeeNodesDisplay.push(node.name);
+      } else if (nodeType === 'enddevice') {
+        endDevice++; endDevices.push(node.name);
+        zigbeeNodesDisplay.push(node.name);
+      } else {
+        unknownType++; unknownTypeDevices.push(node.name);
+        zigbeeNodesDisplay.push(showZigbeeUnknownDevices ? node.name + ' (unknown type)' : node.name);
+      }
+    });
+
+    report.zigbee = {
+      total: Object.keys(result.nodes).length,
+      nodes: zigbeeDevices.sort(),
+      nodesDisplay: zigbeeNodesDisplay.sort(),
+      router, routerDevices: routerDevices.sort(),
+      endDevice, endDevices: endDevices.sort(),
+      unknownType, unknownTypeDevices: unknownTypeDevices.sort()
+    };
+
+    if (showZigbeeNodes) { log('---------------------------------------------'); log('ZigBee nodes:'); log(zigbeeNodesDisplay.join('\r\n')); log('---------------------------------------------'); }
+    if (showZigbeeRouter) { log('---------------------------------------------'); log('ZigBee routers:'); log(routerDevices.join('\r\n')); log('---------------------------------------------'); }
+    if (showZigbeeEndDevice) { log('---------------------------------------------'); log('ZigBee end devices:'); log(endDevices.join('\r\n')); log('---------------------------------------------'); }
+
+    allDevices += Object.keys(result.nodes).length;
+    log(Object.keys(result.nodes).length, 'Zigbee nodes', '(' + router + ' router, ' + endDevice + ' end device, ' + unknownType + ' unknown type)');
+  })
+  .catch(() => { log('Failed: Getting ZigBee State'); report.zigbee = { failed: true }; });
+
+report.totalDevices = allDevices;
+log(allDevices, 'Total devices');
+
+// ================= Compare with previous scan =================
+
+function arrDiff(prevArr, currArr) {
+  if (!Array.isArray(prevArr) || !Array.isArray(currArr)) return null;
+  const prevSet = new Set(prevArr);
+  const currSet = new Set(currArr);
+  const added = currArr.filter(x => !prevSet.has(x));
+  const removed = prevArr.filter(x => !currSet.has(x));
+  return { added, removed };
+}
+
+// Escapes a value for safe HTML embedding
+function escName(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Produces 0-2 structured entries describing a change in this category:
+// { tag: 'added'|'removed', label, count, names } when a name list is
+// available (rendered as a label line + a nested bullet list of names by
+// findingsHtml(), instead of cramming names into one comma/and-joined
+// sentence — much easier to scan when there are more than 1-2 items), or
+// { tag, label, countOnly: 'prev → curr (+/-n)' } as a fallback when no
+// name list is available at all.
+// addedLabel / removedLabel: e.g. "Advanced flows disabled" / "Advanced flows re-enabled"
+// Use this for categories where the ONLY way an item can leave the subset is a real
+// state change (e.g. devices, scripts, users) — not deletion of the item itself.
+function diffLines(addedLabel, removedLabel, prevVal, currVal, prevNames, currNames) {
+  const out = [];
+  const nameDiff = arrDiff(prevNames, currNames);
+
+  if (nameDiff) {
+    if (nameDiff.added.length > 0) {
+      out.push({ tag: 'added', label: addedLabel, count: nameDiff.added.length, names: nameDiff.added });
+    }
+    if (nameDiff.removed.length > 0) {
+      out.push({ tag: 'removed', label: removedLabel, count: nameDiff.removed.length, names: nameDiff.removed });
+    }
+    if (out.length === 0 && prevVal !== undefined && prevVal !== null && currVal !== undefined && currVal !== null && prevVal !== currVal) {
+      const delta = currVal - prevVal;
+      const sign = delta > 0 ? '+' : '';
+      out.push({ tag: currVal > prevVal ? 'added' : 'removed', label: addedLabel, countOnly: `${prevVal} → ${currVal} (${sign}${delta})` });
+    }
+  } else if (prevVal !== undefined && prevVal !== null && currVal !== undefined && currVal !== null && prevVal !== currVal) {
+    const delta = currVal - prevVal;
+    const sign = delta > 0 ? '+' : '';
+    out.push({ tag: currVal > prevVal ? 'added' : 'removed', label: addedLabel, countOnly: `${prevVal} → ${currVal} (${sign}${delta})` });
+  }
+
+  return out;
+}
+
+// Like diffLines, but for categories where an item is a SUBSET of a larger population
+// (e.g. "disabled flows" is a subset of "all flows"). An item leaving the subset is only
+// reported here if it's a genuine state change (still exists, e.g. re-enabled/fixed).
+// If the item no longer exists at all (deleted), it is NOT reported here — that case is
+// covered once, generically, by the population-level "created/deleted" diffLines call
+// elsewhere, so an item that was e.g. both disabled AND deleted isn't reported twice.
+function diffLinesEx(addedLabel, recoveredLabel, prevNames, currNames, currAllNames) {
+  const out = [];
+  const nameDiff = arrDiff(prevNames, currNames);
+  if (!nameDiff) return out;
+
+  if (nameDiff.added.length > 0) {
+    out.push({ tag: 'added', label: addedLabel, count: nameDiff.added.length, names: nameDiff.added });
+  }
+  if (nameDiff.removed.length > 0) {
+    const allSet = new Set(currAllNames || []);
+    const recovered = nameDiff.removed.filter(n => allSet.has(n));
+    if (recovered.length > 0) {
+      out.push({ tag: 'recovered', label: recoveredLabel, count: recovered.length, names: recovered });
+    }
+  }
+  return out;
+}
+
+// Diffs two "device.id -> device.name" maps, distinguishing a true add or
+// remove from a RENAME (same id, different name) — reliable because
+// Homey's device.id stays stable across a rename, only device.name
+// changes. Falls back to the old name-only diff (added/removed, no rename
+// detection) for exactly one run if no ID-based snapshot exists yet, e.g.
+// right after this feature was introduced — after that run, it's fully
+// reliable and no device is ever silently missed.
+function diffByIdWithRename(addedLabel, removedLabel, renamedLabel, prevMap, currMap, prevNamesFallback, currNames) {
+  const out = [];
+
+  if (prevMap && typeof prevMap === 'object') {
+    const prevIds = Object.keys(prevMap);
+    const currIds = Object.keys(currMap || {});
+    const prevIdSet = new Set(prevIds);
+    const currIdSet = new Set(currIds);
+
+    const addedIds = currIds.filter(id => !prevIdSet.has(id));
+    const removedIds = prevIds.filter(id => !currIdSet.has(id));
+    const renamedIds = currIds.filter(id => prevIdSet.has(id) && prevMap[id] !== currMap[id]);
+
+    if (addedIds.length > 0) {
+      out.push({ tag: 'added', label: addedLabel, count: addedIds.length, names: addedIds.map(id => currMap[id]) });
+    }
+    if (removedIds.length > 0) {
+      out.push({ tag: 'removed', label: removedLabel, count: removedIds.length, names: removedIds.map(id => prevMap[id]) });
+    }
+    if (renamedIds.length > 0) {
+      out.push({ tag: 'renamed', label: renamedLabel, count: renamedIds.length, names: renamedIds.map(id => `${prevMap[id]} → ${currMap[id]}`) });
+    }
+  } else if (Array.isArray(prevNamesFallback)) {
+    // No ID map from a previous run yet — one-time fallback to the old
+    // name-only diff, so this transition doesn't silently drop real
+    // adds/removes just because the ID map wasn't there before.
+    const nameDiff = arrDiff(prevNamesFallback, currNames);
+    if (nameDiff) {
+      if (nameDiff.added.length > 0) out.push({ tag: 'added', label: addedLabel, count: nameDiff.added.length, names: nameDiff.added });
+      if (nameDiff.removed.length > 0) out.push({ tag: 'removed', label: removedLabel, count: nameDiff.removed.length, names: nameDiff.removed });
+    }
+  }
+
+  return out;
+}
+
+const findings = []; // { level: 'crit' | 'warn' | 'info', text } -- text is pre-built, HTML-safe
+
+if (previousSnapshot) {
+  // WiFi/Ethernet: report the TRANSITION only, not the ongoing state.
+  // (The System section further down always shows the current live status.)
+  if (previousSnapshot.wifi !== false && report.wifi === false) {
+    findings.push({ level: 'crit', text: '⚠️ WiFi disconnected since previous scan.' });
+  } else if (previousSnapshot.wifi === false && report.wifi === true) {
+    findings.push({ level: 'info', text: '✅ WiFi reconnected (was disconnected in the previous scan).' });
+  }
+  if (previousSnapshot.ethernet !== false && report.ethernet === false) {
+    findings.push({ level: 'crit', text: '⚠️ Ethernet disconnected since previous scan.' });
+  } else if (previousSnapshot.ethernet === false && report.ethernet === true) {
+    findings.push({ level: 'info', text: '✅ Ethernet reconnected (was disconnected in the previous scan).' });
+  }
+
+  // Throttling / under-voltage: same transition-only pattern as WiFi/Ethernet.
+  if (previousSnapshot.throttledCurrent !== true && report.throttledCurrent === true) {
+    findings.push({ level: 'crit', text: '⚠️ Throttling detected since previous scan.' });
+  } else if (previousSnapshot.throttledCurrent === true && report.throttledCurrent !== true) {
+    findings.push({ level: 'info', text: '✅ Throttling resolved (was active in the previous scan).' });
+  }
+  if (previousSnapshot.undervoltageCurrent !== true && report.undervoltageCurrent === true) {
+    findings.push({ level: 'crit', text: '⚠️ Under-voltage detected since previous scan.' });
+  } else if (previousSnapshot.undervoltageCurrent === true && report.undervoltageCurrent !== true) {
+    findings.push({ level: 'info', text: '✅ Under-voltage resolved (was active in the previous scan).' });
+  }
+
+  // Homey firmware version: separate from the "Update available" check
+  // above, which reports an update WAITING to be installed — this reports
+  // one that actually WAS installed since the previous scan.
+  if (previousSnapshot.homeyVersion !== undefined && report.version !== undefined && previousSnapshot.homeyVersion !== report.version) {
+    findings.push({ level: 'info', text: `🏠 Homey firmware updated: ${escName(previousSnapshot.homeyVersion)} → ${escName(report.version)}.` });
+  }
+
+  // Homey name (renamed in the Homey app)
+  if (previousSnapshot.homeyName !== undefined && report.homeyName !== undefined && previousSnapshot.homeyName !== report.homeyName) {
+    findings.push({ level: 'info', text: `🏠 Homey renamed: ${escName(previousSnapshot.homeyName)} → ${escName(report.homeyName)}.` });
+  }
+
+  // Users (with names, relevant for security)
+  const userDiff = arrDiff(previousSnapshot.userNames, report.users ? report.users.names : undefined);
+  if (userDiff && userDiff.added.length > 0) {
+    findings.push({ level: 'crit', label: '👤 User(s) added', count: userDiff.added.length, names: userDiff.added, note: 'Please verify this is expected (possible security issue).' });
+  }
+  if (userDiff && userDiff.removed.length > 0) {
+    findings.push({ level: 'info', label: '👤 User(s) removed', count: userDiff.removed.length, names: userDiff.removed });
+  }
+
+  // Apps disabled (subset can shrink via re-enable; deletion is reported once, below)
+  diffLinesEx('📦 Apps disabled', '📦 Apps re-enabled', previousSnapshot.appsDisabledNames, report.apps.disabledApps, report.apps.allNames)
+    .forEach(e => findings.push({ level: e.tag === 'added' ? 'warn' : 'info', ...e }));
+
+  // Apps crashed (subset can shrink via recovery; deletion is reported once, below)
+  diffLinesEx('🔥 Apps crashed', '🔥 Apps back online (no longer crashed)', previousSnapshot.appsCrashedNames, report.apps.crashedApps, report.apps.allNames)
+    .forEach(e => findings.push({ level: e.tag === 'added' ? 'crit' : 'info', ...e }));
+
+  // Apps installed/uninstalled (full population, not a subset — names shown instead of a bare count)
+  diffLines('📦 Apps installed', '📦 Apps uninstalled', previousSnapshot.appsTotal, report.apps.total, previousSnapshot.appsAllNames, report.apps.allNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Basic flows (broken/disabled subsets can shrink via fix/re-enable; deletion is reported once, below)
+  diffLinesEx('🔀 Basic flows broken', '🔀 Basic flows fixed (no longer broken)', previousSnapshot.flowsBrokenNames, report.flows.brokenNames, report.flows.allNames)
+    .forEach(e => findings.push({ level: (e.tag === 'added' && report.flows.broken > (previousSnapshot.flowsBroken || 0)) ? 'crit' : 'info', ...e }));
+  diffLinesEx('🔀 Basic flows disabled', '🔀 Basic flows re-enabled', previousSnapshot.flowsDisabledNames, report.flows.disabledNames, report.flows.allNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Basic flows created/deleted (full population — names shown instead of a bare count)
+  diffLines('🔀 Basic flows created', '🔀 Basic flows deleted', previousSnapshot.flowsTotal, report.flows.total, previousSnapshot.flowsAllNames, report.flows.allNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Advanced flows (same logic)
+  diffLinesEx('🔀 Advanced flows broken', '🔀 Advanced flows fixed (no longer broken)', previousSnapshot.advFlowsBrokenNames, report.advancedFlows.brokenNames, report.advancedFlows.allNames)
+    .forEach(e => findings.push({ level: (e.tag === 'added' && report.advancedFlows.broken > (previousSnapshot.advFlowsBroken || 0)) ? 'crit' : 'info', ...e }));
+  diffLinesEx('🔀 Advanced flows disabled', '🔀 Advanced flows re-enabled', previousSnapshot.advFlowsDisabledNames, report.advancedFlows.disabledNames, report.advancedFlows.allNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Advanced flows created/deleted (full population — names shown instead of a bare count)
+  diffLines('🔀 Advanced flows created', '🔀 Advanced flows deleted', previousSnapshot.advFlowsTotal, report.advancedFlows.total, previousSnapshot.advFlowsAllNames, report.advancedFlows.allNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Logic & Scripts (already full-existence-based, no subset issue)
+  if (report.homeyscript) {
+    diffLines('🧠 HomeyScript scripts added', '🧠 HomeyScript scripts removed', previousSnapshot.homeyscriptScripts, report.homeyscript.scripts, previousSnapshot.homeyscriptScriptNames, report.homeyscript.scriptNames)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+
+  // Logic & Better Logic variables: named diffs, consistent with every other
+  // category (previously these only showed a bare count change, unlike
+  // e.g. Apps/Flows, which was flagged as an inconsistency).
+  if (report.logicVars) {
+    diffLines('🧠 Logic variables created', '🧠 Logic variables deleted', previousSnapshot.logicVarsTotal, report.logicVars.total, previousSnapshot.logicVarNames, report.logicVars.names)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+  if (report.betterLogic) {
+    diffLines('🧠 Better Logic variables created', '🧠 Better Logic variables deleted', previousSnapshot.betterLogicTotal, report.betterLogic.total, previousSnapshot.betterLogicNames, report.betterLogic.names)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+
+  // Zones: named diff (previously count-only — "📍 Zones: 8 → 9" didn't say
+  // WHICH zone was added or removed). Consistent with the Apps/Flows/Logic
+  // naming-consistency work.
+  diffLines('📍 Zones added', '📍 Zones removed', previousSnapshot.zonesTotal, report.zonesTotal, previousSnapshot.zoneNames, report.zoneNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  // Moods: named diff, same gap the Logic variables fix (v1.4.0) addressed
+  // for that category. Skipped entirely if Moods isn't available on this
+  // Homey (report.moods.unavailable) — nothing meaningful to diff there.
+  if (report.moods && !report.moods.unavailable) {
+    diffLines('🎭 Moods created', '🎭 Moods deleted', previousSnapshot.moodsTotal, report.moods.total, previousSnapshot.moodNames, report.moods.names)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+
+  // Count-only categories (no meaningful name list available): old arrow notation (numbers only, no escaping needed)
+  let l;
+  function simpleDiff(label, prevVal, currVal) {
+    if (prevVal === undefined || prevVal === null || currVal === undefined || currVal === null || prevVal === currVal) return null;
+    const delta = currVal - prevVal;
+    const sign = delta > 0 ? '+' : '';
+    return `${label}: ${prevVal} → ${currVal} (${sign}${delta})`;
+  }
+  // Notification count change intentionally not reported (too noisy)
+  if ((l = simpleDiff('📱 Total devices', previousSnapshot.devicesTotal, report.totalDevices))) findings.push({ level: 'info', text: l });
+  if ((l = simpleDiff('📱 Infrared devices', previousSnapshot.irDevices, report.devices.ir))) findings.push({ level: 'info', text: l });
+  if ((l = simpleDiff('🖼️ Images', previousSnapshot.imagesTotal, report.imagesTotal))) findings.push({ level: 'info', text: l });
+  if ((l = simpleDiff('🔔 Alarms', previousSnapshot.alarmsTotal, report.alarms ? report.alarms.total : undefined))) findings.push({ level: 'info', text: l });
+  if ((l = simpleDiff('🔔 Alarms enabled', previousSnapshot.alarmsEnabled, report.alarms ? report.alarms.enabled : undefined))) findings.push({ level: 'info', text: l });
+
+  // Devices with name detail (already full-existence-based, no subset issue).
+  // ID-based diff: reliably distinguishes a true add/remove from a rename
+  // (see diffByIdWithRename() above) — falls back to the old name-only
+  // diff for one run if no ID-based snapshot exists yet.
+  diffByIdWithRename('📱 Virtual devices added', '📱 Virtual devices removed', '📱 Virtual devices renamed', previousSnapshot.virtualDeviceById, report.devices.virtualById, previousSnapshot.virtualDeviceNames, report.devices.virtualNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+  diffByIdWithRename('📱 Other devices added', '📱 Other devices removed', '📱 Other devices renamed', previousSnapshot.otherDeviceById, report.devices.otherById, previousSnapshot.otherDeviceNames, report.devices.otherNames)
+    .forEach(e => findings.push({ level: 'info', ...e }));
+
+  if (report.zwave && !report.zwave.failed) {
+    diffLines('📡 Z-Wave devices added', '📡 Z-Wave devices removed', previousSnapshot.zwaveTotal, report.zwave.total, previousSnapshot.zwaveDeviceNames, report.zwave.devices)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+    // Unreachable/unknown-type nodes now list WHICH node IDs, not just a bare
+    // count — these use dedicated "*Raw" arrays that are always populated
+    // (see the Z-Wave section above), independent of the showZwave...Nodes
+    // display toggles, so the diff still works correctly even if you've
+    // turned the on-screen list off.
+    diffLines('📡 Z-Wave nodes newly unreachable', '📡 Z-Wave nodes reachable again', previousSnapshot.zwaveUnreachable, report.zwave.unreachable, previousSnapshot.zwaveUnreachableNodes, report.zwave.unreachableNodes)
+      .forEach(e => findings.push({ level: e.tag === 'added' ? 'warn' : 'info', ...e }));
+    diffLines('📡 Z-Wave nodes with unknown type', '📡 Z-Wave nodes no longer unknown type', previousSnapshot.zwaveUnknown, report.zwave.unknown, previousSnapshot.zwaveUnknownNodes, report.zwave.unknownNodes)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+  if (report.zigbee && !report.zigbee.failed) {
+    diffLines('📶 Zigbee devices added', '📶 Zigbee devices removed', previousSnapshot.zigbeeTotal, report.zigbee.total, previousSnapshot.zigbeeNodeNames, report.zigbee.nodes)
+      .forEach(e => findings.push({ level: 'info', ...e }));
+  }
+} else {
+  // First scan: no baseline to compare against, so flag current disconnects live.
+  if (report.wifi === false) findings.push({ level: 'crit', text: '⚠️ WiFi is currently not connected.' });
+  if (report.ethernet === false) findings.push({ level: 'crit', text: '⚠️ Ethernet is currently not connected.' });
+  if (report.throttledCurrent === true) findings.push({ level: 'crit', text: '⚠️ Throttling is currently active.' });
+  if (report.undervoltageCurrent === true) findings.push({ level: 'crit', text: '⚠️ Under-voltage is currently active.' });
+  findings.push({ level: 'info', text: 'ℹ️ This is the first scan with comparison data — changes will be shown here starting from the next scan.' });
+}
+
+// Stale backup warning: THRESHOLD-based (not a scan-to-scan diff, unlike
+// everything else in this Summary) — fires whenever the last successful
+// backup is older than staleBackupWarningDays, on every run, regardless of
+// whether that changed since the previous scan. Runs on the first scan too.
+// Silently skipped if no backup date is available at all (e.g. older Homey
+// models, or no backup has ever completed — the System table already flags
+// that case with "⚠️ No backup found").
+if (report.backupAgoDays !== undefined && report.backupAgoDays > staleBackupWarningDays) {
+  findings.push({ level: 'warn', text: `⚠️ Last backup is more than ${staleBackupWarningDays} day${staleBackupWarningDays === 1 ? '' : 's'} old (${escName(report.backupAgo)}).` });
+}
+
+// Sort: crit first, then warn, then info
+const levelRank = { crit: 0, warn: 1, info: 2 };
+findings.sort((a, b) => levelRank[a.level] - levelRank[b.level]);
+
+const hasFindings = findings.length > 0;
+// Always include the full detail report on the first-ever scan (nothing to
+// compare against yet, so "no findings" doesn't mean "nothing to show").
+const includeDetails = !onlyShowDetailsOnChange || !previousSnapshot || hasFindings;
+
+// Save snapshot for next scan (incl. name lists for detail diffs)
+const snapshot = {
+  ts: new Date().toISOString(),
+  homeyVersion: report.version, homeyName: report.homeyName,
+  wifi: report.wifi, ethernet: report.ethernet,
+  throttledCurrent: report.throttledCurrent, undervoltageCurrent: report.undervoltageCurrent,
+  usersTotal: report.users ? report.users.total : undefined,
+  userNames: report.users ? report.users.names : undefined,
+  appsTotal: report.apps.total, appsAllNames: report.apps.allNames,
+  appsDisabled: report.apps.disabled, appsDisabledNames: report.apps.disabledApps,
+  appsCrashed: report.apps.crashed, appsCrashedNames: report.apps.crashedApps,
+  flowsTotal: report.flows.total, flowsBroken: report.flows.broken, flowsDisabled: report.flows.disabled,
+  flowsBrokenNames: report.flows.brokenNames, flowsDisabledNames: report.flows.disabledNames, flowsAllNames: report.flows.allNames,
+  advFlowsTotal: report.advancedFlows.total, advFlowsBroken: report.advancedFlows.broken, advFlowsDisabled: report.advancedFlows.disabled,
+  advFlowsBrokenNames: report.advancedFlows.brokenNames, advFlowsDisabledNames: report.advancedFlows.disabledNames, advFlowsAllNames: report.advancedFlows.allNames,
+  logicVarsTotal: report.logicVars ? report.logicVars.total : undefined,
+  logicVarNames: report.logicVars ? report.logicVars.names : undefined,
+  homeyscriptScripts: report.homeyscript ? report.homeyscript.scripts : undefined,
+  homeyscriptScriptNames: report.homeyscript ? report.homeyscript.scriptNames : undefined,
+  betterLogicTotal: report.betterLogic ? report.betterLogic.total : undefined,
+  betterLogicNames: report.betterLogic ? report.betterLogic.names : undefined,
+  zonesTotal: report.zonesTotal, zoneNames: report.zoneNames, notificationsTotal: report.notificationsTotal,
+  imagesTotal: report.imagesTotal,
+  alarmsTotal: report.alarms ? report.alarms.total : undefined, alarmsEnabled: report.alarms ? report.alarms.enabled : undefined,
+  moodsTotal: (report.moods && !report.moods.unavailable) ? report.moods.total : undefined,
+  moodNames: (report.moods && !report.moods.unavailable) ? report.moods.names : undefined,
+  devicesTotal: report.totalDevices, virtualDevices: report.devices.virtual, virtualDeviceNames: report.devices.virtualNames, virtualDeviceById: report.devices.virtualById,
+  irDevices: report.devices.ir, otherDevices: report.devices.other, otherDeviceNames: report.devices.otherNames, otherDeviceById: report.devices.otherById,
+  zwaveTotal: (report.zwave && !report.zwave.failed) ? report.zwave.total : undefined,
+  zwaveDeviceNames: (report.zwave && !report.zwave.failed) ? report.zwave.devices : undefined,
+  zwaveUnreachable: (report.zwave && !report.zwave.failed) ? report.zwave.unreachable : undefined,
+  zwaveUnreachableNodes: (report.zwave && !report.zwave.failed) ? report.zwave.unreachableNodes : undefined,
+  zwaveUnknown: (report.zwave && !report.zwave.failed) ? report.zwave.unknown : undefined,
+  zwaveUnknownNodes: (report.zwave && !report.zwave.failed) ? report.zwave.unknownNodes : undefined,
+  zigbeeTotal: (report.zigbee && !report.zigbee.failed) ? report.zigbee.total : undefined,
+  zigbeeNodeNames: (report.zigbee && !report.zigbee.failed) ? report.zigbee.nodes : undefined
+};
+
+if (snapshotVarId) {
+  await Homey.logic.updateVariable({ id: snapshotVarId, variable: { type: 'string', value: JSON.stringify(snapshot) } });
+}
+
+// ================= Build HTML report =================
+
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function ul(items) {
+  if (!items || items.length === 0) return '<p class="muted">— none —</p>';
+  return '<ul>' + items.map(i => '<li>' + esc(i) + '</li>').join('') + '</ul>';
+}
+
+function formatBytes(bytes) {
+  if (bytes === undefined || bytes === null) return '-';
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(2) + ' KB';
+  return bytes + ' B';
+}
+
+function groupDevicesHtml(groups) {
+  const entries = Object.values(groups || {});
+  if (entries.length === 0) return '<p class="muted">— none —</p>';
+  return '<ul>' + entries.map(g => '<li>' + esc(g.name || 'Unnamed group') + ': ' + esc((g.devices || []).join(', ') || '—') + '</li>').join('') + '</ul>';
+}
+
+// Renders one finding as HTML. Three shapes are supported:
+//  - f.names present: "<count> <label> since previous scan:" followed by a
+//    nested bullet list of the actual names — far easier to scan than
+//    cramming everything into one comma/and-joined sentence, especially
+//    when there are more than 1-2 items.
+//  - f.countOnly present: a bare "<label>: prev → curr (+/-n)" line, used
+//    only when no name list is available at all.
+//  - f.text present: a fully pre-built plain-text line (transitions like
+//    WiFi/Ethernet reconnecting, the "first scan" notice, etc.)
+function findingsHtml(list) {
+  if (list.length === 0) return '<p class="ok">✅ No notable changes since the previous scan.</p>';
+  return '<ul class="findings">' + list.map(f => {
+    let inner;
+    if (f.names && f.names.length > 0) {
+      const namesList = '<ul class="sub-names">' + f.names.map(n => '<li>' + escName(n) + '</li>').join('') + '</ul>';
+      inner = `${f.count} ${f.label} since previous scan:${namesList}`;
+      if (f.note) inner += `<div class="note">${escName(f.note)}</div>`;
+    } else if (f.countOnly) {
+      inner = `${f.label}: ${f.countOnly}`;
+    } else {
+      inner = f.text;
+    }
+    return `<li class="${f.level}">${inner}</li>`;
+  }).join('') + '</ul>';
+}
+
+const now = new Date();
+// Explicit timeZone: the HomeyScript sandbox's default timezone doesn't
+// necessarily match Homey's configured location (it can run in UTC
+// regardless of where your Homey actually is), so without this the
+// displayed time can be off by a few hours. See the TIMEZONE setting
+// near the top of the script.
+const dateStr = now.toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short', timeZone: TIMEZONE });
+
+let summaryHtml = findingsHtml(findings);
+if (onlyShowDetailsOnChange && !includeDetails) {
+  summaryHtml += '<p class="muted">Detailed report omitted — nothing changed since the previous scan. Set <code>onlyShowDetailsOnChange</code> to <code>false</code> in the script to always include it.</p>';
+}
+
+const sections = [];
+
+// Summary (at the top)
+sections.push({
+  id: 'summary', title: '🔎 Summary & Actions',
+  html: summaryHtml
+});
+
+if (includeDetails) {
+
+  // System
+  sections.push({
+    id: 'system', title: '🏠 System',
+    html: `
+      <table class="kv">
+        <tr><th>Name</th><td>${esc(report.homeyName || '-')}</td></tr>
+        <tr><th>Version</th><td>${esc(report.version || '-')}</td></tr>
+        <tr><th>Model</th><td>${esc(report.model || '-')} (${report.cores || '-'} core(s))</td></tr>
+        <tr><th>Uptime</th><td>${esc(report.uptimeText || '-')}</td></tr>
+        <tr><th>WiFi</th><td>${report.wifi === undefined ? '-' : (report.wifi ? '✅ connected' : '❌ not connected')}</td></tr>
+        <tr><th>Ethernet</th><td>${report.ethernet === undefined ? '-' : (report.ethernet ? '✅ connected' : '❌ not connected')}</td></tr>
+        <tr><th>Update available</th><td>${report.updateAvailable ? '⚠️ ' + esc(report.updateAvailable) : '✅ none'}</td></tr>
+        <tr><th>Last backup</th><td>${report.backupDate ? esc(report.backupDate) + ' (' + esc(report.backupAgo) + ')' : (homeyPlatformVersion === 2 && !isSelfHosted ? '⚠️ No backup found' : '-')}</td></tr>
+        <tr><th>Storage</th><td>${report.storageTotal !== undefined ? formatBytes(report.storageTotal) + ' (' + formatBytes(report.storageFree) + ' free)' : '-'}</td></tr>
+        <tr><th>Memory</th><td>${report.memoryTotal !== undefined ? formatBytes(report.memoryTotal) + ' (' + formatBytes(report.memoryFree) + ' free)' : '-'}</td></tr>
+        <tr><th>Throttling</th><td>${report.throttledCurrent === undefined ? '-' : (report.throttledCurrent ? '⚠️ Currently throttled' : (report.throttled ? '✅ Not currently (occurred before)' : '✅ Never'))}</td></tr>
+        <tr><th>Under-voltage</th><td>${report.undervoltageCurrent === undefined ? '-' : (report.undervoltageCurrent ? '⚠️ Currently under-voltage' : (report.undervoltage ? '✅ Not currently (occurred before)' : '✅ Never'))}</td></tr>
+        <tr><th>Images</th><td>${report.imagesTotal ?? '-'}</td></tr>
+        <tr><th>Moods</th><td>${report.moods ? report.moods.total + (report.moods.unavailable ? ' (feature not available)' : '') : '-'}</td></tr>
+        <tr><th>Alarms</th><td>${report.alarms ? report.alarms.total + ' (' + report.alarms.enabled + ' enabled)' : '-'}</td></tr>
+        <tr><th>Users</th><td>${report.users ? report.users.total + ' (' + report.users.owner + ' owner, ' + report.users.manager + ' manager, ' + report.users.user + ' user, ' + report.users.guest + ' guest)' : '-'}</td></tr>
+        <tr><th>Zones</th><td>${report.zonesTotal ?? '-'}</td></tr>
+        <tr><th>Notifications (Timeline)</th><td>${report.notificationsTotal ?? '-'}</td></tr>
+      </table>
+      ${showMoods ? '<h3>Moods</h3>' + ul(report.moods ? report.moods.names : []) : ''}`
+  });
+
+  // Apps
+  sections.push({
+    id: 'apps', title: '📦 Apps',
+    html: `
+      <p><strong>${report.apps.total}</strong> apps total — ${report.apps.stable} Stable, ${report.apps.test} Test, ${report.apps.dev} Development, ${report.apps.sdkv2} SDKv2, ${report.apps.sdkv3} SDKv3, <strong>${report.apps.updateable}</strong> updates available, <strong>${report.apps.disabled}</strong> disabled, <strong>${report.apps.crashed}</strong> crashed.</p>
+      ${showUpdateableApps ? '<h3>Updates available</h3>' + ul(report.apps.updateableApps) : ''}
+      ${showDisabledApps ? '<h3>Disabled</h3>' + ul(report.apps.disabledApps) + '<h3>Crashed</h3>' + ul(report.apps.crashedApps) : ''}
+      ${showAppChannels ? '<h3>Test channel apps</h3>' + ul(report.apps.testApps) + '<h3>Development apps</h3>' + ul(report.apps.devApps) : ''}
+      ${showSDKv2Apps ? '<h3>SDKv2 apps</h3>' + ul(report.apps.sdkv2Apps) : ''}
+    `
+  });
+
+  // Flows
+  sections.push({
+    id: 'flows', title: '🔀 Flows',
+    html: `
+      <p><strong>Basic flows:</strong> ${report.flows.total} total, ${report.flows.broken} broken, ${report.flows.disabled} disabled.</p>
+      ${showDisabledFlows ? '<h3>Disabled basic flows</h3>' + ul(report.flows.disabledNames) : ''}
+      ${showBrokenFlows ? '<h3>Broken basic flows</h3>' + ul(report.flows.brokenNames) : ''}
+      <p><strong>Advanced flows:</strong> ${report.advancedFlows.total} total, ${report.advancedFlows.broken} broken, ${report.advancedFlows.disabled} disabled.</p>
+      ${showDisabledAdvancedFlows ? '<h3>Disabled advanced flows</h3>' + ul(report.advancedFlows.disabledNames) : ''}
+      ${showBrokenAdvancedFlows ? '<h3>Broken advanced flows</h3>' + ul(report.advancedFlows.brokenNames) : ''}
+    `
+  });
+
+  // Logic & scripts
+  sections.push({
+    id: 'logic', title: '🧠 Logic & Scripts',
+    html: `
+      <table class="kv">
+        <tr><th>Logic variables</th><td>${report.logicVars ? report.logicVars.total + ' (' + report.logicVars.boolean + ' boolean, ' + report.logicVars.number + ' number, ' + report.logicVars.string + ' string)' : '-'}</td></tr>
+        <tr><th>HomeyScript scripts</th><td>${report.homeyscript ? report.homeyscript.scripts + ' (' + report.homeyscript.tokens + ' tokens/tags)' : '-'}</td></tr>
+        <tr><th>Better Logic variables</th><td>${report.betterLogic ? report.betterLogic.total + ' (' + report.betterLogic.boolean + ' boolean, ' + report.betterLogic.number + ' number, ' + report.betterLogic.string + ' string)' : 'not installed'}</td></tr>
+      </table>
+      ${showLogicVariables && report.logicVars ? '<h3>Logic variables</h3>' + ul(report.logicVars.names) : ''}
+      ${showHomeyScriptScripts && report.homeyscript ? '<h3>HomeyScript scripts</h3>' + ul(report.homeyscript.scriptNames) : ''}
+      ${showBetterLogicVariables && report.betterLogic ? '<h3>Better Logic variables</h3>' + ul(report.betterLogic.names) : ''}
+    `
+  });
+
+  // Devices - overview
+  sections.push({
+    id: 'devices', title: '📱 Devices — Overview',
+    html: `
+      <table class="kv">
+        <tr><th>Total devices</th><td><strong>${report.totalDevices}</strong></td></tr>
+        <tr><th>Virtual devices</th><td>${report.devices.virtual}</td></tr>
+        <tr><th>Infrared devices</th><td>${report.devices.ir}</td></tr>
+        <tr><th>Other devices</th><td>${report.devices.other}</td></tr>
+        <tr><th>Group devices</th><td>${report.devices.groupsTotal ?? 0}</td></tr>
+        <tr><th>Z-Wave nodes</th><td>${report.zwave && !report.zwave.failed ? report.zwave.total : 'unknown'}</td></tr>
+        <tr><th>Zigbee nodes</th><td>${report.zigbee && !report.zigbee.failed ? report.zigbee.total : 'unknown'}</td></tr>
+      </table>
+      <p class="muted">${report.devices.unifiExcluded || 0} UniFi network-presence devices excluded from all counts and diffs above (see script notes).</p>
+      ${showVirtualDevices ? '<h3>Virtual devices</h3>' + ul(report.devices.virtualNames) : ''}
+      ${showOtherDevices ? '<h3>Other devices (WiFi, Bluetooth, Thread/Matter, cloud apps — no protocol-level health data available)</h3>' + ul(report.devices.otherNames) : ''}
+      ${showGroupDevices ? '<h3>Group devices</h3>' + groupDevicesHtml(report.devices.groups) : ''}
+    `
+  });
+
+  // Z-Wave
+  if (report.zwave && !report.zwave.failed) {
+    sections.push({
+      id: 'zwave', title: '📡 Z-Wave',
+      html: `
+        <p><strong>${report.zwave.total}</strong> nodes — ${report.zwave.unsecure} unsecure, ${report.zwave.s0} S0, ${report.zwave.s2auth} S2 (auth), ${report.zwave.s2unauth} S2 (unauth), ${report.zwave.router} router, ${report.zwave.battery} battery, ${report.zwave.unreachable} unreachable, ${report.zwave.unknown} unknown node(s).</p>
+        ${showZwaveUnreachableNodes ? '<h3>Unreachable nodes</h3>' + ul(report.zwave.unreachableNodes.map(n => 'Node ' + n)) : ''}
+        ${showZwaveUnknownNodes ? '<h3>Unknown nodes</h3>' + ul(report.zwave.unknownNodes.map(n => 'Node ' + n)) : ''}
+        ${showZwaveBatteryDevices ? '<h3>Battery devices</h3>' + ul(report.zwave.batteryDevices) : ''}
+        ${showZwaveDevices ? '<h3>All Z-Wave devices</h3>' + ul(report.zwave.devices) : ''}
+      `
+    });
+  } else {
+    sections.push({ id: 'zwave', title: '📡 Z-Wave', html: '<p class="muted">Could not retrieve Z-Wave status.</p>' });
+  }
+
+  // Zigbee
+  if (report.zigbee && !report.zigbee.failed) {
+    sections.push({
+      id: 'zigbee', title: '📶 Zigbee',
+      html: `
+        <p><strong>${report.zigbee.total}</strong> nodes — ${report.zigbee.router} router, ${report.zigbee.endDevice} end device, ${report.zigbee.unknownType} unknown type.</p>
+        ${showZigbeeNodes ? '<h3>All Zigbee nodes</h3>' + ul(report.zigbee.nodesDisplay) : ''}
+      `
+    });
+  } else {
+    sections.push({ id: 'zigbee', title: '📶 Zigbee', html: '<p class="muted">Could not retrieve Zigbee status.</p>' });
+  }
+
+}
+
+const toc = sections.map(s => `<li><a href="#${s.id}">${esc(s.title)}</a></li>`).join('');
+const body = sections.map(s => `<h2 id="${s.id}">${esc(s.title)}</h2>${s.html}<p class="backtotop"><a href="#top">▲ Back to top</a></p>`).join('');
+
+const html = `
+<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;margin:0 auto;color:#222;">
+  <style>
+    h1 { font-size:20px; margin-bottom:4px; }
+    .subtitle { color:#666; font-size:13px; margin-top:0; margin-bottom:20px; }
+    h2 { font-size:16px; border-bottom:2px solid #2a7de1; padding-bottom:4px; margin-top:28px; }
+    h3 { font-size:13px; color:#444; margin-bottom:4px; margin-top:14px; }
+    table.kv { border-collapse:collapse; width:100%; font-size:13px; }
+    table.kv th { text-align:left; padding:4px 8px 4px 0; color:#555; width:40%; vertical-align:top; }
+    table.kv td { padding:4px 0; }
+    ul { margin:4px 0; padding-left:20px; font-size:13px; }
+    li { margin-bottom:2px; }
+    .muted { color:#999; font-size:13px; margin:4px 0; }
+    .ok { color:#27ae60; font-size:13px; margin:4px 0; }
+    ul.findings { list-style:none; padding-left:0; }
+    ul.findings li { padding:6px 10px; margin-bottom:4px; border-radius:4px; font-size:13px; }
+    ul.findings li.crit { background:#fdecea; color:#c0392b; font-weight:600; border-left:3px solid #c0392b; }
+    ul.findings li.warn { background:#fef6e7; color:#b9770e; border-left:3px solid #d68910; }
+    ul.findings li.info { background:#f4f7fb; color:#333; border-left:3px solid #90a4ba; }
+    ul.findings li ul.sub-names { margin:6px 0 2px 0; padding-left:18px; list-style:disc; }
+    ul.findings li ul.sub-names li { font-weight:600; margin-bottom:1px; }
+    ul.findings li .note { margin-top:4px; font-weight:normal; font-style:italic; opacity:0.85; }
+    .toc { background:#f4f7fb; border:1px solid #dce6f2; border-radius:6px; padding:12px 16px; margin-bottom:8px; }
+    .toc ul { list-style:none; padding-left:0; margin:0; }
+    .toc li { margin-bottom:4px; }
+    .toc a { color:#2a7de1; text-decoration:none; font-size:13px; }
+    .toc a:hover { text-decoration:underline; }
+    .backtotop { text-align:right; margin:6px 0 0 0; }
+    .backtotop a { color:#2a7de1; text-decoration:none; font-size:12px; }
+    .backtotop a:hover { text-decoration:underline; }
+    .footer { color:#999; font-size:11px; margin-top:30px; border-top:1px solid #eee; padding-top:10px; }
+  </style>
+
+  <a id="top"></a>
+  <h1>Homey Overview</h1>
+  <p class="subtitle">${esc(dateStr)}</p>
+
+  <div class="toc">
+    <strong style="font-size:13px;">Table of Contents</strong>
+    <ul>${toc}</ul>
+  </div>
+
+  ${body}
+
+  <p class="footer">Automatically generated by HomeyScript v${esc(VERSION)}.</p>
+</div>
+`;
+
+// Send the report. Each recipient is wrapped separately so that an error
+// from the email-sending app (e.g. invalid address, SMTP auth failure that
+// IS surfaced back as a rejection) is caught and logged instead of crashing
+// the whole script — and so one failed recipient doesn't block the others.
+// Note: this can only catch errors the sending app actually reports back.
+// Many failures (e.g. a bad SMTP password) happen asynchronously inside the
+// sending app itself and are never surfaced to the caller at all — in that
+// case the action call still resolves normally, this still logs "sent", and
+// there's nothing this script can detect (see README troubleshooting).
+const sendResults = [];
+for (const addr of mailToList) {
+  try {
+    await Homey.flow.runFlowCardAction({
+      id: 'homey:app:email.sender:sendmail',
+      args: { mailto: addr, subject: 'Homey Overview — ' + dateStr, body: html }
+    });
+    log('Email sent to', addr);
+    sendResults.push({ addr, ok: true });
+  } catch (e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    log('Failed to send to', addr, '—', msg);
+    sendResults.push({ addr, ok: false, error: msg });
+  }
+}
+
+const sent = sendResults.filter(r => r.ok).map(r => r.addr);
+const failed = sendResults.filter(r => !r.ok);
+
+if (failed.length > 0) {
+  return 'Overview finished. Sent to ' + (sent.join(', ') || '(none)') + '. FAILED for: '
+    + failed.map(f => f.addr + ' (' + f.error + ')').join('; ');
+}
+return 'Overview finished, email sent to ' + sent.join(', ');
