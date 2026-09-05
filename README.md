@@ -1,4 +1,4 @@
-# Homey Overview v1.5.6 — weekly system report by email
+# Homey Overview v1.5.6 — scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey Pro system —
 apps, flows, logic variables, devices, Z-Wave, Zigbee, backup/storage/
