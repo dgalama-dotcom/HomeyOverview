@@ -2,40 +2,6 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Ideas for later (not scheduled)
-
-Bigger architectural considerations, distinct from the small fixes
-tracked per-version above — not committed to, just kept in mind.
-
-- **Per-section master toggle to hide a whole category, not just its
-  name lists.** Raised on the forum: with every `showZwave...`/
-  `showZigbee...` toggle set to `false`, the "📡 Z-Wave" / "📶 Zigbee"
-  section headers and summary line (e.g. "0 nodes — 0 unsecure, 0 S0,
-  …") still appear in the detail report — only the name lists beneath
-  them are toggle-gated. This is intentional and consistent with every
-  other category (Apps, Flows, Devices Overview, Logic & Scripts also
-  have no master toggle — only their name lists do), so it's not a bug
-  specific to Z-Wave/Zigbee. Adding a "hide this whole section"
-  toggle would need to apply uniformly across all categories to stay
-  consistent, which is a broader change than a single-category fix —
-  worth doing as one deliberate pass if picked up, not piecemeal.
-- **Move the ~35 `showX` toggles out of the script into a Google
-  Sheet.** Instead of hardcoded `const showX = true/false` lines, the
-  script would read current settings from a Sheet (one row per toggle,
-  an on/off checkbox column, room for a comment per toggle) via the
-  existing Google Sheets integration used for the "handleidingen"
-  app. Considered against two alternatives:
-  - *Homey dashboard tiles* (one boolean Logic variable per toggle,
-    shown as native Homey dashboard tiles): stays fully inside Homey,
-    minimal script change, but ~35 separate tiles is a lot of visual
-    clutter for a dashboard.
-  - *A real Homey app with a Settings page*: by far the nicest UX
-    (grouped, searchable, tooltips), but requires the full Apps SDK
-    rewrite already discussed separately — biggest investment.
-  - **Chosen direction if/when picked up: the Google Sheet**, as the
-    best balance of readability (a table beats dozens of tiles) versus
-    effort, and it fits the existing Sheet-based workflow.
-
 ## v1.5.6
 
 ### Fixed
@@ -43,22 +9,22 @@ tracked per-version above — not committed to, just kept in mind.
   changes → per-category counts → every present item listed): several
   categories had a `show...` toggle that was respected for the console
   log, but whose name list was never actually rendered into the emailed
-  HTML report — so those items were invisible in the report itself, even
+  HTML report, so those items were invisible in the report itself, even
   though they were toggled "on". Fixed for:
   - **Apps**: new `showStableApps` toggle + list. Previously there was no
-    way to see which apps were in the (majority) Stable channel — only
+    way to see which apps were in the (majority) Stable channel; only
     Test/Development/disabled/crashed/updateable apps were named
     anywhere.
-  - **Devices**: Infrared devices — `showIRDevices` existed but its list
-    was console-only.
+  - **Devices**: Infrared devices (`showIRDevices` existed but its list
+    was console-only).
   - **Z-Wave**: Router, Unsecure, Secure (S0), Secure (S2 Authenticated),
-    Secure (S2 Unauthenticated) device lists — all five toggles existed
+    Secure (S2 Unauthenticated) device lists; all five toggles existed
     but were console-only.
-  - **Zigbee**: Router, End device lists — both toggles existed but were
+  - **Zigbee**: Router, End device lists; both toggles existed but were
     console-only.
 
-  No new data is collected — all of this was already tracked internally
-  for counts and Summary diffs; this just also surfaces it in the detail
+  No new data is collected; all of this was already tracked internally
+  for counts and Summary diffs, this just also surfaces it in the detail
   report, consistent with every other named category.
 
 ## v1.5.5
@@ -76,34 +42,35 @@ tracked per-version above — not committed to, just kept in mind.
 
 ### Fixed
 - **Fixed the HomeyScript `getAppSettings` failure on Homey Self-Hosted
-  (SHS)** — the last remaining item from the forum's SHS bug report. The
-  v1.5.3 diagnostic logging found the exact cause: on SHS, the returned
-  object only has `id`, `uri` and `scripts` — no `tokens` field at all
-  (confirmed by a forum tester's log: "Cannot convert undefined or null
-  to object — result keys: id, uri, scripts"). The script unconditionally
-  called `Object.keys(result.tokens)`, which threw when that field was
-  missing — losing the ENTIRE result, including the scripts list, which
-  was actually being returned correctly all along. Fixed by defaulting
-  `result.tokens` to `{}`: token count now correctly shows 0 on SHS
-  (matching reality — there's no tokens field there), and the HomeyScript
-  scripts list now shows up as expected. All three SHS issues from the
-  forum report are now fixed (v1.5.1 WiFi/Ethernet, v1.5.2 backup-status,
-  this one) — nothing currently planned/outstanding for SHS.
+  (SHS).** This was the last remaining item from the forum's SHS bug
+  report. The v1.5.3 diagnostic logging found the exact cause: on SHS,
+  the returned object only has `id`, `uri` and `scripts`, with no
+  `tokens` field at all (confirmed by a forum tester's log: "Cannot
+  convert undefined or null to object — result keys: id, uri, scripts").
+  The script unconditionally called `Object.keys(result.tokens)`, which
+  threw when that field was missing, losing the ENTIRE result, including
+  the scripts list, which was actually being returned correctly all
+  along. Fixed by defaulting `result.tokens` to `{}`: token count now
+  correctly shows 0 on SHS (matching reality: there's no tokens field
+  there), and the HomeyScript scripts list now shows up as expected. All
+  three SHS issues from the forum report are now fixed (v1.5.1
+  WiFi/Ethernet, v1.5.2 backup-status, this one); nothing currently
+  planned/outstanding for SHS.
 
 ## v1.5.3
 
 ### Changed
 - **Diagnostics only, no user-facing behavior change.** The HomeyScript
-  `getAppSettings` call (failing on SHS, see "Planned for a future
-  release" above) now logs the actual error message instead of a fixed
-  "Failed: Getting HomeyScript" text, and — if the API call itself
-  succeeded but processing its result threw — also logs the top-level
-  keys of the returned object. Since a tester confirmed the app id is
-  correct on SHS and another app's `getAppSettings` call works fine
-  there, the likely cause is that the API call succeeds but returns a
-  differently-shaped result on SHS (e.g. no `scripts`/`tokens` field),
-  which the script's own processing code wasn't expecting. This will
-  confirm that on the next SHS test run instead of guessing.
+  `getAppSettings` call (failing on SHS at the time) now logs the actual
+  error message instead of a fixed "Failed: Getting HomeyScript" text,
+  and, if the API call itself succeeded but processing its result threw,
+  also logs the top-level keys of the returned object. Since a tester
+  confirmed the app id is correct on SHS and another app's
+  `getAppSettings` call works fine there, the likely cause is that the
+  API call succeeds but returns a differently-shaped result on SHS (e.g.
+  no `scripts`/`tokens` field), which the script's own processing code
+  wasn't expecting. This will confirm that on the next SHS test run
+  instead of guessing.
 
 ## v1.5.2
 
@@ -114,15 +81,15 @@ tracked per-version above — not committed to, just kept in mind.
   tester's log). Cause: the backup check was gated behind the same
   `homeyPlatformVersion === 2` condition, which SHS also satisfies, even
   though `Homey.backup.getOptionLastSuccessfulBackup()` isn't supported
-  there. Fixed using the same `isSelfHosted` detection added in v1.5.1
-  — but applied only to the backup check, not the whole post-2022-gated
+  there. Fixed using the same `isSelfHosted` detection added in v1.5.1,
+  but applied only to the backup check, not the whole post-2022-gated
   block, since storage worked correctly on SHS in the tester's log and
   keeps running as before. "Last backup" now shows "-" on SHS instead of
   a misleading "⚠️ No backup found", and the stale-backup Summary
   warning (added in v1.5.0) is naturally skipped there too, since it
   only fires when a backup date is actually available. Throttling and
   images checks are unaffected. The remaining `getAppSettings` SHS issue
-  stays in the backlog — see "Planned for a future release" above.
+  was resolved next, in v1.5.4.
 
 ## v1.5.1
 
@@ -132,16 +99,16 @@ tracked per-version above — not committed to, just kept in mind.
   console log confirming it (WiFi/Ethernet both showed "not connected"
   despite the report itself sending successfully). Cause: the
   WiFi/Ethernet check was gated behind `homeyPlatformVersion === 2`,
-  assumed to mean "Homey Pro hardware post-2022" — but SHS also reports
+  assumed to mean "Homey Pro hardware post-2022", but SHS also reports
   `homeyPlatformVersion === 2`. SHS runs via the host machine's own
   network stack (no separate WiFi/Ethernet radios to query), so those
   fields come back `false` there regardless of actual connectivity.
   SHS is now detected separately via `homeyModelName` (confirmed exact
-  string: `"Homey Self-Hosted Server"` — independent of core count,
+  string: `"Homey Self-Hosted Server"`, independent of core count,
   since that's a separate field, not part of the model name) and
   excluded from just the WiFi/Ethernet check; those fields now show
   "-" on SHS instead of a false alarm. Storage, throttling, backup and
-  other post-2022-gated checks are untouched — no confirmed problem
+  other post-2022-gated checks are untouched; no confirmed problem
   with those on SHS (storage worked correctly in the tester's log).
 
 ## v1.5.0
@@ -149,7 +116,7 @@ tracked per-version above — not committed to, just kept in mind.
 ### Added
 - **Homey firmware version changes are now reported in the Summary.**
   `report.version` was already captured and shown in the System table,
-  but never compared against the previous scan — unlike almost every
+  but never compared against the previous scan, unlike almost every
   other tracked value. Now shows a Summary finding when it changes,
   e.g. "🏠 Homey firmware updated: 12.4.5 → 12.5.0." Separate from the
   existing `updateAvailable` check, which reports whether an update is
@@ -159,16 +126,16 @@ tracked per-version above — not committed to, just kept in mind.
   Homey itself is renamed, this now shows e.g. "🏠 Homey renamed:
   Smart Home Hub → New Name."
 - **Stale backup warning.** New `staleBackupWarningDays` setting
-  (default `7`) — a Summary finding like "⚠️ Last backup is more than
+  (default `7`): a Summary finding like "⚠️ Last backup is more than
   7 days old" fires whenever the last backup exceeds this many days.
   Unlike everything else in the Summary, this is a *threshold* check
-  against the current backup age, not a scan-to-scan diff — it fires
+  against the current backup age, not a scan-to-scan diff; it fires
   on every run where the backup is too old, whether or not that
   changed since the previous scan.
 - **Images count is now diffed**, same count-only pattern as
   Zones/Total devices, e.g. "🖼️ Images: 3 → 5 (+2)."
-- **Alarms are now diffed** — both total count and enabled count.
-- **Moods are now diffed by name**, not just counted — same gap the
+- **Alarms are now diffed**: both total count and enabled count.
+- **Moods are now diffed by name**, not just counted; same gap the
   Logic variables fix (v1.4.0) addressed for that category.
 - **Zones are now diffed by name**, not just counted. Previously
   "📍 Zones: 8 → 9" didn't say *which* zone was added or removed; zone
@@ -192,19 +159,18 @@ tracked per-version above — not committed to, just kept in mind.
   same platform/firmware as the original 2023 model, so "Homey Pro
   2023" was an inaccurate way to describe which models get backup/
   storage/throttling/images/group-devices support. Comments now say
-  "Homey Pro models post-2022" instead. Documentation-only — the
+  "Homey Pro models post-2022" instead. Documentation-only; the
   actual code check (`homeyPlatformVersion === 2`) was already
   model-agnostic.
 
 ### Fixed
 - Removed a few redundant, incorrect re-sorts in console log lines
   (not visible in the email) that applied a numeric comparator
-  (`(a, b) => a - b`) to arrays of device *names* (strings) — that
-  comparator doesn't work on strings. The underlying data was already
-  correctly alphabetically sorted by that point; the broken re-sort
-  call is simply removed. (Numeric sorts on actual node ID numbers,
-  e.g. Z-Wave unreachable/unknown nodes, are correct as-is and
-  untouched.)
+  (`(a, b) => a - b`) to arrays of device *names* (strings), which
+  doesn't work on strings. The underlying data was already correctly
+  alphabetically sorted by that point; the broken re-sort call is
+  simply removed. (Numeric sorts on actual node ID numbers, e.g.
+  Z-Wave unreachable/unknown nodes, are correct as-is and untouched.)
 
 ## v1.4.0
 
@@ -218,7 +184,7 @@ tracked per-version above — not committed to, just kept in mind.
      created/deleted. Now named, like everything else.
   2. The "🧠 Logic & Scripts" detail section previously showed only
      counts, with no name list underneath (unlike almost every other
-     section). Now has toggle-controlled name lists — new toggles:
+     section). Now has toggle-controlled name lists, via new toggles:
      `showLogicVariables`, `showHomeyScriptScripts`,
      `showBetterLogicVariables` (HomeyScript scripts already had name
      tracking internally for the Summary diff; this just also
@@ -227,7 +193,7 @@ tracked per-version above — not committed to, just kept in mind.
 ### Documentation
 - Added a Troubleshooting note explaining that identical Zigbee
   devices of the same model can consistently show "(unknown type)" on
-  one unit while an otherwise-identical unit doesn't — this reflects
+  one unit while an otherwise-identical unit doesn't. This reflects
   Homey's own Zigbee mesh/pairing-info cache for that specific node,
   not a script issue. Re-pairing the affected device is the suggested
   fix, outside the script's scope.
@@ -249,14 +215,14 @@ tracked per-version above — not committed to, just kept in mind.
   uses Homey's stable device ID instead of the name, so a rename shows
   up as a single "renamed" finding. Falls back to the old name-only
   diff for exactly one run if no ID-based snapshot exists yet (e.g.
-  right after upgrading to this version) — after that run, it's fully
+  right after upgrading to this version); after that run, it's fully
   reliable and no device is ever silently missed.
 
 ### Changed
 - **Zigbee section: removed the overlap between "All Zigbee nodes"
   and "Unknown type devices".** "Unknown type devices" was a subset of
-  "All Zigbee nodes" shown a second time (by design — same pattern as
-  "Apps" vs. "Disabled apps" — but confusing in practice). Unknown-
+  "All Zigbee nodes" shown a second time (by design, same pattern as
+  "Apps" vs. "Disabled apps", but confusing in practice). Unknown-
   type nodes are now annotated directly in the "All Zigbee nodes" list
   instead (e.g. "Homey Weerterstraat (unknown type)"), so there's one
   list instead of two overlapping ones. Still controlled by the
@@ -288,7 +254,7 @@ Based on forum feedback from SingKT.
   The diff/snapshot code was reading from the same toggle-gated array
   used for on-screen display; once that array was emptied by the
   toggle, comparisons against it were meaningless. The underlying data
-  is now always kept complete regardless of display settings — toggles
+  is now always kept complete regardless of display settings; toggles
   only affect what's *shown* in the detail report, never what's
   *compared* in the Summary or saved for the next run.
 - **A toggled-off section's header stayed visible with a misleading
@@ -322,10 +288,10 @@ Based on forum feedback from SingKT.
 - Note on scope: this can only catch errors the sending app actually
   reports back as a rejected promise. Many real-world failures (e.g. a
   bad SMTP password) happen asynchronously inside the sending app
-  itself and are never surfaced to the caller at all — in that case
+  itself and are never surfaced to the caller at all; in that case
   the action call still resolves normally, the script still logs
   "sent", and there's nothing this script can detect. Prompted by a
-  forum report where "sent" was logged but no email arrived — see the
+  forum report where "sent" was logged but no email arrived; see the
   README's new Troubleshooting section for how to diagnose that case.
 
 ## v1.1.1
@@ -334,12 +300,12 @@ Based on forum feedback from SingKT.
 - **Critical: the script always reported "first scan", every single
   run, forever.** Cause: the comparison snapshot (Logic variable
   `Overview_previous_snapshot`) was only ever *updated* if it already
-  existed — the script never actually *created* it. On any Homey
+  existed; the script never actually *created* it. On any Homey
   where that variable didn't already exist (i.e. most fresh
   installs), it silently never got created, the snapshot was never
   saved, and every run started from scratch with nothing to compare
   against. Fixed by creating the variable automatically if it's
-  missing. Reported by a user on the forum running a Homey Pro 2023 —
+  missing. Reported by a user on the forum running a Homey Pro 2023;
   thank you for flagging it. If you're upgrading from an earlier
   version, the very next run after updating will still say "first
   scan" (there's genuinely nothing to compare against yet at that
@@ -348,35 +314,35 @@ Based on forum feedback from SingKT.
 ## v1.1
 
 ### Added
-- **Last successful backup** — date/time of the last backup, plus how
+- **Last successful backup**: date/time of the last backup, plus how
   long ago (Homey Pro 2023 only).
-- **Storage usage** — total/free disk space (Homey Pro 2023 only).
-- **Memory usage** — total/free RAM.
-- **Throttling & under-voltage status** — shown in the System table,
+- **Storage usage**: total/free disk space (Homey Pro 2023 only).
+- **Memory usage**: total/free RAM.
+- **Throttling & under-voltage status**: shown in the System table,
   and reported in the Summary as a finding when it starts or stops
   happening (same transition-only pattern as WiFi/Ethernet).
-- **Images** — count of images stored on Homey (Homey Pro 2023 only).
-- **Moods** — count and names (grouped by zone). Safe even if the
-  Moods feature isn't in use at all, or isn't available on your Homey
-  — reports 0 without erroring.
-- **Alarms** — count of alarm clocks, and how many are enabled.
-- **Apps by channel** — breakdown into Stable / Test (beta) /
+- **Images**: count of images stored on Homey (Homey Pro 2023 only).
+- **Moods**: count and names (grouped by zone). Safe even if the
+  Moods feature isn't in use at all, or isn't available on your Homey;
+  reports 0 without erroring.
+- **Alarms**: count of alarm clocks, and how many are enabled.
+- **Apps by channel**: breakdown into Stable / Test (beta) /
   Development (sideloaded), alongside the existing SDK version
   breakdown.
-- **Group devices** (Homey Pro 2023 native Device Groups) — count and
+- **Group devices** (Homey Pro 2023 native Device Groups): count and
   composition (which member devices belong to which group). Group
   container devices get their own category instead of being lumped
   into "Other devices".
-- **Zigbee "unknown type" devices** — Zigbee nodes that are neither a
+- **Zigbee "unknown type" devices**: Zigbee nodes that are neither a
   Router nor an End Device now get their own category, instead of
   silently disappearing from the Router/End Device breakdown. (Your
-  Homey hub itself typically shows up here — that's expected.)
-- **`onlyShowDetailsOnChange` setting** — when `true`, sends a short
+  Homey hub itself typically shows up here; that's expected.)
+- **`onlyShowDetailsOnChange` setting**: when `true`, sends a short
   Summary-only email on runs where nothing changed, and only includes
   the full detail report on runs that found something. Defaults to
   `false` (always show the full report). The very first run always
   includes the full report regardless of this setting.
-- **Version header** — the script now has a version banner at the
+- **Version header**: the script now has a version banner at the
   top, a `VERSION` constant, and shows the version number in the
   email itself (next to the date).
 
@@ -386,10 +352,10 @@ Based on forum feedback from SingKT.
   the detail report and in the Summary diff.
 - **Capitalization**: Summary finding labels ("Basic flows...",
   "Advanced flows...", "Apps...", "User(s)...") are now capitalized
-  consistently with the rest of the report — previously they started
+  consistently with the rest of the report; previously they started
   with a lowercase letter (e.g. "1 basic flows disabled...").
 - **Email footer** simplified to "Automatically generated by
-  HomeyScript." — no longer references a specific schedule or flow
+  HomeyScript." This no longer references a specific schedule or flow
   name, which could go stale (e.g. if you changed from weekly to
   daily, or renamed the triggering flow).
 - **Timezone** for the date/time shown in the email (and now also the
@@ -399,7 +365,7 @@ Based on forum feedback from SingKT.
   off by a few hours).
 - **Apps/Basic flows/Advanced flows "created" and "deleted"** in the
   Summary now show the actual name(s) in bold, instead of a bare
-  count change (e.g. "76 → 78 (+2)") — consistent with how disabled/
+  count change (e.g. "76 → 78 (+2)"), consistent with how disabled/
   broken items were already shown.
 
 ### Fixed
@@ -416,12 +382,12 @@ Based on forum feedback from SingKT.
 
 - Initial release. Builds a full system overview (system info, apps,
   basic + advanced flows, logic variables, HomeyScript scripts,
-  devices — virtual/infrared/other, Z-Wave, Zigbee) and emails it as
+  devices [virtual, infrared, other], Z-Wave, Zigbee) and emails it as
   HTML.
 - **Summary & Actions** section comparing against the previous run
   (stored in a Logic variable, `Overview_previous_snapshot`), showing
   what changed: broken/disabled flows and apps, WiFi/Ethernet drops,
-  new users, devices added/removed, and more — with item names in
+  new users, devices added/removed, and more, with item names in
   bold where available.
 - Destination email address(es) passed in as a flow argument (not
   hardcoded), supporting multiple comma/semicolon-separated
@@ -430,3 +396,37 @@ Based on forum feedback from SingKT.
   (they churn constantly and would flood the summary with noise).
 - `__mcp_run_*` HomeyScript scripts excluded from the script count
   (internal leftovers from certain AI/MCP bridge integrations).
+
+## Ideas for later (not scheduled)
+
+Bigger architectural considerations, distinct from the small fixes
+tracked per-version above; not committed to, just kept in mind.
+
+- **Per-section master toggle to hide a whole category, not just its
+  name lists.** Raised on the forum: with every `showZwave...`/
+  `showZigbee...` toggle set to `false`, the "📡 Z-Wave" / "📶 Zigbee"
+  section headers and summary line (e.g. "0 nodes, 0 unsecure, 0 S0,
+  …") still appear in the detail report; only the name lists beneath
+  them are toggle-gated. This is intentional and consistent with every
+  other category (Apps, Flows, Devices Overview, Logic & Scripts also
+  have no master toggle, only their name lists do), so it's not a bug
+  specific to Z-Wave/Zigbee. Adding a "hide this whole section"
+  toggle would need to apply uniformly across all categories to stay
+  consistent, which is a broader change than a single-category fix;
+  worth doing as one deliberate pass if picked up, not piecemeal.
+- **Move the ~35 `showX` toggles out of the script into a Google
+  Sheet.** Instead of hardcoded `const showX = true/false` lines, the
+  script would read current settings from a Sheet (one row per toggle,
+  an on/off checkbox column, room for a comment per toggle) via the
+  existing Google Sheets integration used for the "handleidingen"
+  app. Considered against two alternatives:
+  - *Homey dashboard tiles* (one boolean Logic variable per toggle,
+    shown as native Homey dashboard tiles): stays fully inside Homey,
+    minimal script change, but ~35 separate tiles is a lot of visual
+    clutter for a dashboard.
+  - *A real Homey app with a Settings page*: by far the nicest UX
+    (grouped, searchable, tooltips), but requires the full Apps SDK
+    rewrite already discussed separately; biggest investment.
+  - **Chosen direction if/when picked up: the Google Sheet**, as the
+    best balance of readability (a table beats dozens of tiles) versus
+    effort, and it fits the existing Sheet-based workflow.
