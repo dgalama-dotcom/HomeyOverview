@@ -36,6 +36,31 @@ tracked per-version above — not committed to, just kept in mind.
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
 
+## v1.5.6
+
+### Fixed
+- **Closed a gap versus the report's own design intent** (Summary of
+  changes → per-category counts → every present item listed): several
+  categories had a `show...` toggle that was respected for the console
+  log, but whose name list was never actually rendered into the emailed
+  HTML report — so those items were invisible in the report itself, even
+  though they were toggled "on". Fixed for:
+  - **Apps**: new `showStableApps` toggle + list. Previously there was no
+    way to see which apps were in the (majority) Stable channel — only
+    Test/Development/disabled/crashed/updateable apps were named
+    anywhere.
+  - **Devices**: Infrared devices — `showIRDevices` existed but its list
+    was console-only.
+  - **Z-Wave**: Router, Unsecure, Secure (S0), Secure (S2 Authenticated),
+    Secure (S2 Unauthenticated) device lists — all five toggles existed
+    but were console-only.
+  - **Zigbee**: Router, End device lists — both toggles existed but were
+    console-only.
+
+  No new data is collected — all of this was already tracked internally
+  for counts and Summary diffs; this just also surfaces it in the detail
+  report, consistent with every other named category.
+
 ## v1.5.5
 
 ### Added
