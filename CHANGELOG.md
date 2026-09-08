@@ -35,6 +35,40 @@ Fixes and changes planned for the next version, not yet implemented.
   both places this sentence appears (the HTML detail report and the
   matching console log line used for testing) so they stay
   consistent with each other.
+- **Z-Wave "Unreachable nodes" shows a bare node ID instead of the
+  device name.** Reported: node 39 shows up as just "Node 39" in the
+  Unreachable nodes list (and the same bare "39" in the Summary &
+  Actions diff line), even though it's a known, named device
+  ("Lamp boom") that just happens to be offline right now. Checked
+  whether the name can be attached reliably, or only when the node is
+  reachable: it's reliable either way. The device name doesn't come
+  from live communication with the physical node (which is what
+  fails when a node is unreachable); it comes from Homey's own device
+  registry, keyed by `zw_node_id`, which the script already collects
+  for every paired Z-Wave device regardless of its current online
+  status. That name/ID pairing already exists in the script as a
+  byproduct of building the security/router/battery breakdowns, so
+  "Unreachable nodes" can look up each ID in that same pairing and
+  show "Lamp boom (Node 39)" instead of "Node 39", with no dependency
+  on the node actually responding. Confirmed against Homey's own
+  native Z-Wave node list (screenshot): node 39 does show as "Lamp
+  boom" there too, while nodes 10, 21 and 22 show as "Unknown Node",
+  i.e. Homey itself has no name on file for those, not a script
+  limitation. So this fix only ever adds a name where one genuinely
+  exists; a node with no matching paired device (which is exactly
+  how "Unknown nodes" is defined) keeps showing as a bare "Node X",
+  which is correct and matches Homey's own UI, not something to
+  paper over with a guessed or stale name. Checked the rest of the
+  script for the same gap: "Unreachable nodes" is the only place
+  where an ID is shown without a name where a name is actually
+  available; "Unknown nodes" structurally can never have one (that's
+  the definition of unknown); no other section (Zigbee, Apps, Flows,
+  Devices, etc.) ever shows a bare ID instead of a name. Planned fix:
+  build a `nodeId -> deviceName` lookup from the already-collected
+  Z-Wave device list, and use it when rendering `unreachableNodes`,
+  in the HTML detail report, the console log, and the Summary & Actions
+  diff line (all three currently read from the same underlying data,
+  so one fix at the data level covers all three).
 
 ## v1.5.6
 
