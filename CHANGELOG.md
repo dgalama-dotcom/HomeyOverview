@@ -2,6 +2,40 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Backlog for next release
+
+Fixes and changes planned for the next version, not yet implemented.
+
+### Fixes
+- **Z-Wave summary line wording: "unreachable" and "unknown" aren't
+  the same kind of number as the rest of the breakdown.** In the
+  sentence "7 nodes — 5 unsecure, 2 S0, 0 S2 (auth), 0 S2 (unauth), 5
+  router, 2 battery, 1 unreachable, 3 unknown node(s).", the security
+  breakdown (unsecure/S0/S2 auth/S2 unauth) and the power-type
+  breakdown (router/battery) are true partitions of the 7 paired
+  devices, and always sum to 7. "Unreachable" is also a subset of
+  those same 7 (one of the paired devices currently not responding).
+  But "unknown" node(s) are not part of the 7 at all: they're raw
+  node IDs present in Homey's Z-Wave network table with no matching
+  paired device (a ghost node, a half-removed device, or the
+  controller itself), so they sit outside the 7 rather than inside
+  it. The current phrasing lists all of these side by side as if they
+  were siblings, which reads as if the 7 includes the unknown ones
+  too. Checked the rest of the script for the same issue: the
+  equivalent Zigbee line ("20 nodes — 4 router, 13 end device, 3
+  unknown type.") is fine as-is, since every Zigbee node is
+  classified into exactly one of router/end device/unknown type (a
+  true three-way partition that always sums to the total); this is
+  specific to Z-Wave's "unknown" category. Planned fix (wording only,
+  no change to the underlying counts or toggles): split the line in
+  two, e.g. "7 paired Z-Wave devices — 5 unsecure, 2 S0, 0 S2 (auth),
+  0 S2 (unauth), 5 router, 2 battery, 1 currently unreachable."
+  followed by "Additionally, 3 unknown node(s) found in the Z-Wave
+  network with no matching paired device." Needs to be applied in
+  both places this sentence appears (the HTML detail report and the
+  matching console log line used for testing) so they stay
+  consistent with each other.
+
 ## v1.5.6
 
 ### Fixed
