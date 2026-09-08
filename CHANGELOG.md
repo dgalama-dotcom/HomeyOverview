@@ -2,12 +2,10 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Backlog for next release
+## v1.5.7
 
-Fixes and changes planned for the next version, not yet implemented.
-
-### Fixes
-- **Z-Wave summary line wording: "unreachable" and "unknown" aren't
+### Fixed
+- **Z-Wave summary line wording: "unreachable" and "unknown" weren't
   the same kind of number as the rest of the breakdown.** In the
   sentence "7 nodes — 5 unsecure, 2 S0, 0 S2 (auth), 0 S2 (unauth), 5
   router, 2 battery, 1 unreachable, 3 unknown node(s).", the security
@@ -19,56 +17,59 @@ Fixes and changes planned for the next version, not yet implemented.
   node IDs present in Homey's Z-Wave network table with no matching
   paired device (a ghost node, a half-removed device, or the
   controller itself), so they sit outside the 7 rather than inside
-  it. The current phrasing lists all of these side by side as if they
-  were siblings, which reads as if the 7 includes the unknown ones
+  it. The old phrasing listed all of these side by side as if they
+  were siblings, which read as if the 7 included the unknown ones
   too. Checked the rest of the script for the same issue: the
   equivalent Zigbee line ("20 nodes — 4 router, 13 end device, 3
-  unknown type.") is fine as-is, since every Zigbee node is
+  unknown type.") was already fine, since every Zigbee node is
   classified into exactly one of router/end device/unknown type (a
-  true three-way partition that always sums to the total); this is
-  specific to Z-Wave's "unknown" category. Planned fix (wording only,
-  no change to the underlying counts or toggles): split the line in
-  two, e.g. "7 paired Z-Wave devices — 5 unsecure, 2 S0, 0 S2 (auth),
+  true three-way partition that always sums to the total); this was
+  specific to Z-Wave's "unknown" category. Fixed by splitting the
+  line in two (wording only, no change to the underlying counts or
+  toggles): "7 paired Z-Wave devices — 5 unsecure, 2 S0, 0 S2 (auth),
   0 S2 (unauth), 5 router, 2 battery, 1 currently unreachable."
   followed by "Additionally, 3 unknown node(s) found in the Z-Wave
-  network with no matching paired device." Needs to be applied in
-  both places this sentence appears (the HTML detail report and the
-  matching console log line used for testing) so they stay
-  consistent with each other.
-- **Z-Wave "Unreachable nodes" shows a bare node ID instead of the
-  device name.** Reported: node 39 shows up as just "Node 39" in the
+  network with no matching paired device." Applied in both places this
+  sentence appears (the HTML detail report and the matching console
+  log line used for testing) so they stay consistent with each other.
+- **Z-Wave "Unreachable nodes" showed a bare node ID instead of the
+  device name.** Reported: node 39 showed up as just "Node 39" in the
   Unreachable nodes list (and the same bare "39" in the Summary &
   Actions diff line), even though it's a known, named device
-  ("Lamp boom") that just happens to be offline right now. Checked
-  whether the name can be attached reliably, or only when the node is
-  reachable: it's reliable either way. The device name doesn't come
-  from live communication with the physical node (which is what
-  fails when a node is unreachable); it comes from Homey's own device
-  registry, keyed by `zw_node_id`, which the script already collects
-  for every paired Z-Wave device regardless of its current online
-  status. That name/ID pairing already exists in the script as a
-  byproduct of building the security/router/battery breakdowns, so
-  "Unreachable nodes" can look up each ID in that same pairing and
-  show "Lamp boom (Node 39)" instead of "Node 39", with no dependency
-  on the node actually responding. Confirmed against Homey's own
-  native Z-Wave node list (screenshot): node 39 does show as "Lamp
-  boom" there too, while nodes 10, 21 and 22 show as "Unknown Node",
-  i.e. Homey itself has no name on file for those, not a script
-  limitation. So this fix only ever adds a name where one genuinely
-  exists; a node with no matching paired device (which is exactly
-  how "Unknown nodes" is defined) keeps showing as a bare "Node X",
-  which is correct and matches Homey's own UI, not something to
-  paper over with a guessed or stale name. Checked the rest of the
-  script for the same gap: "Unreachable nodes" is the only place
-  where an ID is shown without a name where a name is actually
-  available; "Unknown nodes" structurally can never have one (that's
-  the definition of unknown); no other section (Zigbee, Apps, Flows,
-  Devices, etc.) ever shows a bare ID instead of a name. Planned fix:
-  build a `nodeId -> deviceName` lookup from the already-collected
-  Z-Wave device list, and use it when rendering `unreachableNodes`,
-  in the HTML detail report, the console log, and the Summary & Actions
-  diff line (all three currently read from the same underlying data,
-  so one fix at the data level covers all three).
+  ("Lamp boom") that just happens to be offline. Checked whether the
+  name can be attached reliably, or only when the node is reachable:
+  it's reliable either way. The device name doesn't come from live
+  communication with the physical node (which is what fails when a
+  node is unreachable); it comes from Homey's own device registry,
+  keyed by `zw_node_id`, which the script already collects for every
+  paired Z-Wave device regardless of its current online status. That
+  name/ID pairing already existed in the script as a byproduct of
+  building the security/router/battery breakdowns, so "Unreachable
+  nodes" now looks up each ID in that same pairing and shows "Lamp
+  boom (Node 39)" instead of "Node 39", with no dependency on the node
+  actually responding. Confirmed against Homey's own native Z-Wave
+  node list (screenshot): node 39 does show as "Lamp boom" there too,
+  while nodes 10, 21 and 22 show as "Unknown Node", i.e. Homey itself
+  has no name on file for those, not a script limitation. So this fix
+  only ever adds a name where one genuinely exists; a node with no
+  matching paired device (which is exactly how "Unknown nodes" is
+  defined) still shows as a bare "Node X", which is correct and
+  matches Homey's own UI, not something to paper over with a guessed
+  or stale name. Checked the rest of the script for the same gap:
+  "Unreachable nodes" was the only place where an ID was shown without
+  a name where a name was actually available; "Unknown nodes"
+  structurally can never have one (that's the definition of unknown);
+  no other section (Zigbee, Apps, Flows, Devices, etc.) ever shows a
+  bare ID instead of a name. Fixed by building a `nodeId -> deviceName`
+  lookup from the already-collected Z-Wave device list, and using it
+  when rendering `unreachableNodes`, in the HTML detail report, the
+  console log, and the Summary & Actions diff line (all three read
+  from the same underlying data, so one fix at the data level covers
+  all three). One-time side effect: if a node was already unreachable
+  before updating to this version, the very next run may show a
+  one-time "Node 39 reachable again" / "Lamp boom (Node 39) newly
+  unreachable" pair in the Summary, purely because the stored format
+  changed; the run after that is accurate again.
 
 ## v1.5.6
 
