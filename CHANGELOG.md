@@ -2,6 +2,52 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## v1.6.0
+
+### Changed
+- **WhatsApp summary (v1.5.8) now goes through the community CallMeBot Homey
+  app instead of a direct HTTP call.** Previously, the script called
+  CallMeBot's API directly via `fetch()`, with your phone number and API key
+  hardcoded as two script consts (`CALLMEBOT_PHONE` / `CALLMEBOT_APIKEY`).
+  That worked, but meant your personal credentials lived in plain text
+  inside the script itself, which is awkward for a script you might share,
+  paste elsewhere, or post publicly. Since the community
+  [CallMeBot app](https://homey.app/en-us/app/com.gruijter.callmebot/CallMeBot/)
+  (`com.gruijter.callmebot`) provides its own flow action card, the script
+  now calls that card instead: your WhatsApp device's own "Send a message"
+  action, found automatically by its driver ID (regardless of what you
+  named the device). Your phone number and API key now live only in that
+  device's own settings in Homey, entered once when you add the device, the
+  same place the CallMeBot app already stores them, never in this script's
+  text. Same pattern as how the email is sent (via a flow action card, not
+  a raw API call). The `CALLMEBOT_PHONE`/`CALLMEBOT_APIKEY` consts are
+  removed; nothing to fill in in the script anymore. Requires installing
+  the CallMeBot app and adding a WhatsApp device there first; see the
+  README for the updated setup steps.
+
+## v1.5.8
+
+### Added
+- **Optional WhatsApp notification.** On every run, if the new
+  `sendWhatsAppSummary` setting is `true`, a plain-text version of the
+  Summary & Actions section is also sent to WhatsApp via
+  [CallMeBot](https://www.callmebot.com/), a free personal API: you
+  register once by sending CallMeBot a WhatsApp message, which gives you
+  an API key, and after that a plain HTTP request sends you a message.
+  This uses HomeyScript's built-in `fetch()` directly, so it needs no
+  extra Homey app; CallMeBot only supports sending to the one number it
+  was registered with, so (unlike the email recipient) this isn't a flow
+  argument, just two new fixed settings near the top of the script:
+  `CALLMEBOT_PHONE` and `CALLMEBOT_APIKEY`. Off by default until those are
+  filled in. Only the Summary is sent, never the full detail report, and
+  it's sent unconditionally on every run regardless of the
+  `onlyShowDetailsOnChange` setting, since the Summary itself is always
+  short and always included in the email too. A CallMeBot failure (e.g.
+  their free service being temporarily over capacity) is caught and
+  logged, and reported in the script's return value, without failing the
+  rest of the script. See the README for the one-time CallMeBot
+  registration steps.
+
 ## v1.5.7
 
 ### Fixed
