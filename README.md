@@ -1,4 +1,4 @@
-# Homey Overview v1.5.7 - scheduled system report by email
+# Homey Overview v1.6.0 - scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey system: system
 info and uptime, update availability, apps (with channel and
@@ -10,7 +10,9 @@ On every run it also compares against the previous run and puts a
 "Summary & Actions" section at the top of the email, highlighting what
 changed (new broken flows, apps that started crashing, WiFi/Ethernet
 drops, new users added, throttling, etc.), so you don't have to read
-the whole report every time.
+the whole report every time. Optionally, that same Summary can also be
+sent to WhatsApp via CallMeBot, for a quick phone notification alongside
+the full email.
 
 ## What you need
 
@@ -28,6 +30,10 @@ the whole report every time.
    email itself, using the email-sending app on Homey. You just need
    an inbox that can render HTML email (Gmail, Outlook, etc.) to
    receive it in.
+5. *(Optional)* If you also want the Summary sent to WhatsApp: the
+   **CallMeBot** app (App Store, by Robin de Gruijter, app id
+   `com.gruijter.callmebot`), with a WhatsApp device added in it. Not
+   needed for the email report — see "WhatsApp notifications" below.
 
 ## Installation
 
@@ -137,6 +143,47 @@ Most changes are reported with the actual item name(s) in **bold**
 variables, zones, total device count) are count-only, since a
 meaningful name list either isn't available or isn't worth the noise.
 
+## WhatsApp notifications (optional)
+
+Besides the HTML email, the script can also send a short, plain-text
+version of the Summary & Actions section straight to WhatsApp, using the
+community **CallMeBot** Homey app. This is entirely optional and off by
+default.
+
+Unlike the email step (which just needs a generic "send email" app),
+WhatsApp needs one specific app, because the script looks up your
+CallMeBot device by its driver ID:
+
+1. Install the **CallMeBot** app from the App Store (by Robin de
+   Gruijter, app id `com.gruijter.callmebot`).
+2. In the CallMeBot app, add a new **WhatsApp** device. Its setup will
+   walk you through registering with CallMeBot's free personal API (a
+   one-time WhatsApp message to get your API key) and ask for your phone
+   number and that key — enter them there, in the device's own settings.
+   They're stored on the device itself, not in this script.
+3. In the script, find this line near the top:
+
+   ```js
+   const sendWhatsAppSummary = false;
+   ```
+
+   Set it to `true`.
+4. Save the script. From the next run onward, you'll get the Summary on
+   WhatsApp as well as by email.
+
+Notes: the script finds your CallMeBot WhatsApp device automatically (by
+its driver, regardless of what you named it), the same way it finds the
+email-sending app, so there's nothing to configure beyond step 2 above
+and no phone number or API key ever appears in the script text — handy
+if you ever share or paste this script elsewhere. It's a free,
+community-run service (both the CallMeBot API itself and the Homey app
+wrapping it), not an official WhatsApp product, so it can occasionally
+be temporarily over capacity for new registrations (existing devices
+keep working); a failed WhatsApp send is logged and reported in the
+script's result, but never blocks the email from being sent. Only the
+Summary is sent, never the full detail report, and it's sent on every
+run regardless of the `onlyShowDetailsOnChange` setting below.
+
 ## Toggles
 
 At the very top of the script there's a block of `const showX = true;`
@@ -147,6 +194,10 @@ email, or only counted. Set any of them to `false` if you want a
 shorter email. `showExampleScripts` works the other way round: it
 defaults to `false` and hides Homey's own built-in example
 HomeyScript scripts from the count; set it to `true` to include them.
+`sendWhatsAppSummary` is a separate setting further up (see "WhatsApp
+notifications" above); it turns on an extra notification channel
+rather than a name list, and needs the CallMeBot app + a WhatsApp
+device set up first (see that section) before turning it on.
 
 For the full version history, see CHANGELOG.md.
 
