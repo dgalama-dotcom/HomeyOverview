@@ -19,6 +19,29 @@ All notable changes to the Homey Overview script are documented here.
   `.footer`'s font-size a notch and add `font-style: italic` in the
   `<style>` block) rather than changing size/style ad hoc inline.
 
+- **Zigbee: flag nodes that have gone quiet.** Z-Wave already gets a
+  "nodes newly unreachable" / "reachable again" pair in the Summary,
+  but Zigbee has no equivalent even though each Zigbee node carries its
+  own `lastSeen` timestamp. Add a matching check: if a Zigbee node's
+  `lastSeen` is older than some threshold (e.g. a few days), flag it as
+  newly unresponsive, and flag it again as "reporting again" once it
+  updates. Closes a gap between the two sections.
+
+- **Low-battery device warning.** Homey tracks a battery level per
+  device (not just for Z-Wave). Add a section/Summary line for devices
+  at or below a configurable battery threshold, with a diff-based
+  finding when a device newly drops into that list — similar in spirit
+  to the existing stale-backup warning.
+
+- **Detect an unexpected Homey reboot.** The script already fetches
+  Homey's uptime but only renders it as text; it isn't compared
+  scan-to-scan. Store the raw uptime (seconds) and the wall-clock time
+  of the scan in the snapshot, then on the next run check whether the
+  current uptime is shorter than expected given the elapsed time since
+  the previous scan. A shorter-than-expected uptime means Homey
+  restarted in between — currently invisible unless it happens to
+  coincide with a firmware-update notice.
+
 ## v1.6.0
 
 ### Changed
@@ -562,3 +585,12 @@ tracked per-version above; not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
+  - **Show *why* a flow is broken, not just that it is.** Right now the
+    script only lists the names of broken flows. More detail is
+    available in principle (e.g. device removed, card no longer exists,
+    app disabled/crashed), but getting it reliably means re-validating
+    every flow's cards against the live app/device/flow registries in
+    the script itself — Homey's own `broken` flag alone isn't enough (it
+    stays `false` for a number of "referenced device was deleted" cases).
+    More work than the items above, so parking it here rather than in
+    the concrete backlog for now.
