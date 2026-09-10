@@ -2,7 +2,7 @@
 
 All notable changes to the Homey Overview script are documented here.
 
-## Backlog (ideas for a future version)
+## Backlog
 
 - **Footer text: include the script's own name, and use a smaller,
   italic font.** Currently the email footer just reads "Automatically
