@@ -1,11 +1,12 @@
-# Homey Overview v1.6.0 - scheduled system report by email
+# Homey Overview v1.7.0 - scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey system: system
 info and uptime, update availability, apps (with channel and
 disabled/crashed breakdown), basic and advanced flows, logic variables,
 HomeyScript scripts, devices (virtual, infrared, other, group devices),
-Z-Wave, Zigbee, backup/storage/memory health, throttling/under-voltage
-status, images, moods, alarms, users, and zones, and emails it to you.
+Z-Wave, Zigbee (incl. stale/not-responding nodes), low-battery devices,
+backup/storage/memory health, throttling/under-voltage status, images,
+moods, alarms, users, and zones, and emails it to you.
 On every run it also compares against the previous run and puts a
 "Summary & Actions" section at the top of the email, highlighting what
 changed (new broken flows, apps that started crashing, WiFi/Ethernet
@@ -88,9 +89,34 @@ the full email.
    run until a fresh backup completes. Change the number to taste. Only
    relevant on Homey Pro models post-2022, where backup date is
    available at all.
-8. Save the script. (There's also a `VERSION` constant a bit further
-   down; no need to touch it unless you start modifying the script
-   yourself, in which case bumping it helps you tell reports apart.)
+8. A bit further down, find:
+
+   ```js
+   const zigbeeStaleDays = 3;
+   ```
+
+   This controls when a Zigbee node is flagged in the Summary as "not
+   responding", based on that node's own last-seen timestamp on the
+   Zigbee network (the Zigbee equivalent of the Z-Wave "newly
+   unreachable" check). Some battery-powered end-devices sleep for
+   hours between reports by design, so a very low value here can cause
+   false positives; raise it if you see those.
+9. Just below that, find:
+
+   ```js
+   const lowBatteryWarningPercent = 20;
+   ```
+
+   This controls the Summary's low-battery warning: any device
+   reporting a battery percentage at or below this threshold (or a
+   plain low-battery flag with no percentage) is flagged once, when it
+   newly crosses the threshold. Applies to any device type (Zigbee,
+   Z-Wave, Wi-Fi, etc.), not just Z-Wave. Devices of class "car" (EVs)
+   are excluded, since they normally sit below most reasonable
+   percentages during ordinary use.
+10. Save the script. (There's also a `VERSION` constant a bit further
+    down; no need to touch it unless you start modifying the script
+    yourself, in which case bumping it helps you tell reports apart.)
 
 ## Running it manually (quick test)
 
