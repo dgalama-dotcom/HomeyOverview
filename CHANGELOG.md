@@ -585,12 +585,12 @@ tracked per-version above; not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
-  - **Show *why* a flow is broken, not just that it is.** Right now the
-    script only lists the names of broken flows. More detail is
-    available in principle (e.g. device removed, card no longer exists,
-    app disabled/crashed), but getting it reliably means re-validating
-    every flow's cards against the live app/device/flow registries in
-    the script itself — Homey's own `broken` flag alone isn't enough (it
-    stays `false` for a number of "referenced device was deleted" cases).
-    More work than the items above, so parking it here rather than in
-    the concrete backlog for now.
+- **Show *why* a flow is broken, not just that it is.** Right now the
+  script only lists the names of broken flows. More detail is
+  available in principle (e.g. device removed, card no longer exists,
+  app disabled/crashed), but getting it reliably means re-validating
+  every flow's cards against the live app/device/flow registries in
+  the script itself — Homey's own `broken` flag alone isn't enough (it
+  stays `false` for a number of "referenced device was deleted" cases).
+  More work than the items above, so parking it here rather than in
+  the concrete backlog for now.
