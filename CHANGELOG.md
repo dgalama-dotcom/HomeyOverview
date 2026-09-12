@@ -2,6 +2,50 @@
 
 All notable changes to the Homey Overview script are documented here.
 
+## Backlog
+
+- **Detect renames instead of reporting remove+add, for every device
+  category — not just Zigbee.** The Zigbee and Z-Wave "devices
+  added"/"devices removed" diffs currently compare device *names*
+  only (`diffLines`), unlike Virtual/Other devices, which already
+  diff by Homey's stable `device.id` and correctly report a rename as
+  a single "renamed" finding (`diffByIdWithRename`). Renaming several
+  devices in one day currently shows as a confusing wall of "N devices
+  added" / "N devices removed" with near-identical name lists (even a
+  stray trailing space on an otherwise-identical name causes a false
+  remove+add pair), instead of "N devices renamed".
+
+  - **Zigbee:** confirmed live that each node has a stable identifier
+    available — `ieeeAddress` (the hardware address), the object key
+    in `Homey.zigbee.getState().nodes` — which stays the same across
+    an in-app rename. Fix: build an `ieeeAddress -> name` map (same
+    pattern as `virtualById`/`otherById`) and run it through
+    `diffByIdWithRename`.
+  - **Z-Wave:** the devices come from the same `Homey.devices.getDevices()`
+    call as Virtual/Other, so Homey's own `device.id` is already
+    available there too — same fix, build a `zwaveById` map and run it
+    through `diffByIdWithRename`. (The existing node-ID-based
+    unreachable/unknown-node tracking is separate and unaffected.)
+
+  Both get the same one-run fallback to the old name-only diff for the
+  first run after upgrading (no ID-based snapshot yet). Note: this
+  only fixes *true* renames (same physical device, name changed) — a
+  genuine hardware swap (new `ieeeAddress` / new `device.id`) will
+  still correctly show as remove+add, since that's a different
+  physical identity even if it's given the same name.
+
+## Ideas for later
+
+- **Show *why* a flow is broken, not just that it is.** Right now the
+  script only lists the names of broken flows. More detail is
+  available in principle (e.g. device removed, card no longer exists,
+  app disabled/crashed), but getting it reliably means re-validating
+  every flow's cards against the live app/device/flow registries in
+  the script itself — Homey's own `broken` flag alone isn't enough (it
+  stays `false` for a number of "referenced device was deleted" cases).
+  More work than the items above, so parking it here rather than in
+  the concrete backlog for now.
+
 ## v1.7.0
 
 ### Added
@@ -585,12 +629,3 @@ tracked per-version above; not committed to, just kept in mind.
   - **Chosen direction if/when picked up: the Google Sheet**, as the
     best balance of readability (a table beats dozens of tiles) versus
     effort, and it fits the existing Sheet-based workflow.
-  - **Show *why* a flow is broken, not just that it is.** Right now the
-  script only lists the names of broken flows. More detail is
-  available in principle (e.g. device removed, card no longer exists,
-  app disabled/crashed), but getting it reliably means re-validating
-  every flow's cards against the live app/device/flow registries in
-  the script itself — Homey's own `broken` flag alone isn't enough (it
-  stays `false` for a number of "referenced device was deleted" cases).
-  More work than the items above, so parking it here rather than in
-  the concrete backlog for now.
