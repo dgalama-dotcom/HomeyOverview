@@ -4,36 +4,6 @@ All notable changes to the Homey Overview script are documented here.
 
 ## Backlog
 
-- **Detect renames instead of reporting remove+add, for every device
-  category — not just Zigbee.** The Zigbee and Z-Wave "devices
-  added"/"devices removed" diffs currently compare device *names*
-  only (`diffLines`), unlike Virtual/Other devices, which already
-  diff by Homey's stable `device.id` and correctly report a rename as
-  a single "renamed" finding (`diffByIdWithRename`). Renaming several
-  devices in one day currently shows as a confusing wall of "N devices
-  added" / "N devices removed" with near-identical name lists (even a
-  stray trailing space on an otherwise-identical name causes a false
-  remove+add pair), instead of "N devices renamed".
-
-  - **Zigbee:** confirmed live that each node has a stable identifier
-    available — `ieeeAddress` (the hardware address), the object key
-    in `Homey.zigbee.getState().nodes` — which stays the same across
-    an in-app rename. Fix: build an `ieeeAddress -> name` map (same
-    pattern as `virtualById`/`otherById`) and run it through
-    `diffByIdWithRename`.
-  - **Z-Wave:** the devices come from the same `Homey.devices.getDevices()`
-    call as Virtual/Other, so Homey's own `device.id` is already
-    available there too — same fix, build a `zwaveById` map and run it
-    through `diffByIdWithRename`. (The existing node-ID-based
-    unreachable/unknown-node tracking is separate and unaffected.)
-
-  Both get the same one-run fallback to the old name-only diff for the
-  first run after upgrading (no ID-based snapshot yet). Note: this
-  only fixes *true* renames (same physical device, name changed) — a
-  genuine hardware swap (new `ieeeAddress` / new `device.id`) will
-  still correctly show as remove+add, since that's a different
-  physical identity even if it's given the same name.
-
 ## Ideas for later
 
 - **Show *why* a flow is broken, not just that it is.** Right now the
@@ -45,6 +15,38 @@ All notable changes to the Homey Overview script are documented here.
   stays `false` for a number of "referenced device was deleted" cases).
   More work than the items above, so parking it here rather than in
   the concrete backlog for now.
+
+## v1.7.1
+
+### Added
+- **Zigbee and Z-Wave devices are now diffed by Homey's stable ID**
+  (`ieeeAddress` for Zigbee — confirmed live to stay the same across an
+  in-app rename; `device.id` for Z-Wave, from the same
+  `Homey.devices.getDevices()` call Virtual/Other already used) instead
+  of by name only. Same `diffByIdWithRename` pattern Virtual/Other
+  devices already had. A device renamed in the Homey app is now
+  reported as a single "renamed" finding (e.g. "📶 Zigbee devices
+  renamed: Old name → New name") instead of a confusing wall of
+  "N devices added" / "N devices removed" with near-identical name
+  lists — this also fixes a false remove+add pair caused by a single
+  stray space in an otherwise-identical name. Same one-run fallback to
+  the old name-only diff as Virtual/Other got, for the first run after
+  upgrading (no ID-based snapshot yet). A genuine hardware swap (new
+  `ieeeAddress`/`device.id`) still correctly shows as remove+add, since
+  that's a different physical device even with the same name. (The
+  existing node-ID-based unreachable/unknown-node tracking for Z-Wave,
+  and stale-node tracking for Zigbee, are separate and unaffected.)
+- **Diagnostics added for the Storage row.** A single occurrence was
+  observed (2026-09-13, Homey Pro Early 2023, firmware 13.5.0) where
+  Storage showed "-" while sibling post-2022 fields (Last backup,
+  Images) reported fine in that same run — cause unknown, not yet
+  reproduced or root-caused. The storage call now logs the actual
+  error message on failure, and the raw result shape if it resolves
+  without the expected `total`/`free` fields, instead of a bare
+  "Failed" message with no detail (same diagnostic pattern as the
+  v1.5.3 `getAppSettings` diagnostics) — so a recurrence can actually
+  be diagnosed. No behavior change if it doesn't recur; this is not a
+  fix, since the root cause is still unknown.
 
 ## v1.7.0
 
