@@ -4,6 +4,100 @@ All notable changes to the Homey Overview script are documented here.
 
 ## Backlog
 
+- **Bug: Zigbee "not responding"/"reporting again" tracking is fooled
+  by a same-run rename.** Confirmed 2026-09-20: a Zigbee node that was
+  renamed (e.g. "Klimaat slaapkamer" → "Klimaat slaapkamer (unused)")
+  while already stale (20 days, per the user) showed up as BOTH "1
+  Zigbee nodes newly not responding: Klimaat slaapkamer (unused)" AND
+  "1 Zigbee nodes reporting again: Klimaat slaapkamer" in the same
+  Summary — a false pair, since the node's stale status hadn't
+  actually changed, only its name. Cause: this diff
+  (`previousSnapshot.zigbeeStaleNodes` vs `report.zigbee.staleNodes`,
+  via `diffLines`) still compares NAME arrays, unlike the v1.7.1
+  added/removed/renamed fix, which moved to ID-based diffing
+  (`report.zigbee.nodesById`, keyed by `ieeeAddress`) but deliberately
+  left this stale-node check untouched. Fix: track staleness by
+  `ieeeAddress` instead of name (the ID map already exists from
+  v1.7.1), so a rename no longer produces a false "newly not
+  responding" + "reporting again" pair.
+
+- **Bug: Z-Wave "nodes unreachable"/"reachable again" tracking has the
+  same name-based blind spot.** Same underlying category of bug as the
+  Zigbee stale-node bug above: `report.zwave.unreachableNodes` holds
+  strings that embed the device NAME (e.g. "Lamp boom (Node 39)"), and
+  this diff (`previousSnapshot.zwaveUnreachableNodes` vs
+  `report.zwave.unreachableNodes`, via `diffLines`) compares those full
+  strings rather than a stable ID. Renaming a Z-Wave device while it's
+  unreachable would produce the same false "newly unreachable" +
+  "reachable again" pair. Fix: track unreachability by the Z-Wave
+  protocol-level node ID (`device.settings.zw_node_id`, already
+  available via `zwaveNodeName`/`zwaveNodes`) instead of by the
+  composed display string — a `nodeId -> unreachable` set, compared
+  scan-to-scan by that numeric ID, using the current name (via
+  `zwaveNodeName`) only for display. Note this is a DIFFERENT id than
+  `device.id` (already used for the v1.7.1 added/removed/renamed diff)
+  — this is the Z-Wave network node number, same one "unknown nodes"
+  already uses, and it doesn't change on a rename.
+
+- **Detect renames instead of reporting remove+add, for Basic and
+  Advanced flows — AND keep broken/disabled state-change detection
+  correct even when a rename happens in the same run.** Confirmed
+  2026-09-20 (deliberate test by the user): renaming a flow (e.g.
+  "Tronity" → "Tronity (Webhook)") is currently reported as "1
+  Advanced flows created: Tronity (Webhook)" + "1 Advanced flows
+  deleted: Tronity" — the same remove+add-instead-of-rename gap
+  devices/Zigbee/Z-Wave had before v1.7.1/this fix. Live-verified
+  (via `flows_list`/`advanced_flows_list`) that both Basic and
+  Advanced flows have a stable `id` field, so the same
+  `diffByIdWithRename` fix applies here (`id -> name` map,
+  `previousSnapshot.flowsAllById`/`advFlowsAllById`).
+
+  Important constraint from the user: renaming a flow AND changing its
+  broken/disabled status in the same run must still report BOTH
+  changes, not just one. The current broken/disabled subset check
+  (`diffLinesEx`, in `📦`/`🔀` sections) compares NAME arrays too, so a
+  same-run rename would currently either mask a real state change or
+  falsely report one (e.g. a still-broken-but-renamed flow would show
+  as "newly broken" under its new name, and NOT as "fixed" under its
+  old name, which is accidentally almost-correct only for the broken
+  case — but is fragile and not deliberately designed that way). Fix:
+  replace the name-based broken/disabled subset check with a new
+  ID-based helper (working name: `diffIdSetWithNames`) that tracks
+  broken/disabled flow IDs independently of the name-based rename
+  diff above, always reporting the CURRENT name. This makes the two
+  checks fully independent, so a flow that's both renamed and newly
+  broken in the same run correctly produces two separate findings:
+  "🔀 Basic flows renamed: Old name → New name" AND "🔀 Basic flows
+  broken: New name". Needs the same one-run fallback to the old
+  name-only `diffLinesEx` behavior for the first run after upgrading
+  (no ID-based broken/disabled snapshot yet). Applies to both Basic
+  and Advanced flows (both have the same `broken`/`enabled` fields and
+  the same `diffLinesEx`-based subset checks today).
+
+- **Make the Storage-bug diagnostics (v1.7.1) persistent, not just
+  console-logged.** Confirmed 2026-09-20: the storage field was "-"
+  on 17, 18 and 19 September, then reported fine again on 16 and 20
+  September — a real, multi-day intermittent pattern, not a one-off
+  glitch. But the v1.7.1 diagnostic `log()` calls turned out to be
+  useless for this: HomeyScript doesn't retain console output for a
+  flow-triggered run anywhere retrievable after the fact (only a
+  manual "Run" click in the script editor shows its own live output),
+  and there's no API to fetch historical run logs — so the diagnostic
+  info from those three failing days is gone. Checked the trigger flow
+  ("Homey Overview - scheduled mail", daily at 08:00) against the
+  last known backup time (02:06) — no obvious time-of-day overlap, so
+  that's not an obvious explanation either.
+
+  Fix: instead of (or in addition to) `log()`, persist the diagnostic
+  detail somewhere that survives across runs and can be read back via
+  the Homey API/MCP at any later point — e.g. a dedicated Logic
+  variable (same mechanism as `Overview_previous_snapshot`), written
+  with the timestamp + error message/raw result shape whenever the
+  storage call fails or returns an unexpected shape. That way, the
+  next time this recurs, the diagnostic detail can actually be
+  retrieved and read after the fact, instead of depending on someone
+  watching the live console at the exact moment it happens.
+
 ## Ideas for later
 
 - **Show *why* a flow is broken, not just that it is.** Right now the
