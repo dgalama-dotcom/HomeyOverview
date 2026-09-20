@@ -1,4 +1,4 @@
-# Homey Overview v1.7.1 - scheduled system report by email
+# Homey Overview v1.7.2 - scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey system: system
 info and uptime, update availability, apps (with channel and
@@ -162,6 +162,18 @@ If you ever want to reset the comparison baseline (e.g. after a big
 manual reorganization you don't want flagged as "changes"), just delete
 the `Overview_previous_snapshot` logic variable; it will be recreated
 on the next run.
+
+The script also creates and maintains a second logic variable,
+`Overview_storage_diagnostic`, used only for the rare case where the
+Storage row in the System table shows "-" instead of an actual value.
+When that happens, this variable is updated with the timestamp and the
+actual error message (or unexpected result shape) from that failed
+attempt, so you can check it later even though the run itself only
+happened via a scheduled flow (HomeyScript doesn't keep console log
+output from flow-triggered runs anywhere retrievable after the fact).
+You don't need to do anything with this variable unless you're
+troubleshooting a "Storage: -" report; it's safe to ignore otherwise,
+and safe to delete if you want (it will be recreated on the next run).
 
 Most changes are reported with the actual item name(s) in **bold**
 (e.g. "2 Basic flows created since previous scan: **Flow A** and
