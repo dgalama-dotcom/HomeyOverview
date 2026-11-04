@@ -1,4 +1,4 @@
-# Homey Overview v1.7.2 - scheduled system report by email
+# Homey Overview v1.8.0 - scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey system: system
 info and uptime, update availability, apps (with channel and
@@ -162,6 +162,15 @@ If you ever want to reset the comparison baseline (e.g. after a big
 manual reorganization you don't want flagged as "changes"), just delete
 the `Overview_previous_snapshot` logic variable; it will be recreated
 on the next run.
+
+Since v1.8.0, this snapshot also includes each app's current version
+string, keyed by app ID (`appVersionsById`). This isn't shown anywhere
+in the email itself — it's there purely so an external script or tool
+reading the snapshot (e.g. via the Homey API) can build a history of
+app versions over time, for something like "when did app X update to
+version Y", which nothing in the script or its emails recorded before
+this version. If you don't have any such external tool, you can safely
+ignore this field entirely; it changes nothing about the report itself.
 
 The script also creates and maintains a second logic variable,
 `Overview_storage_diagnostic`, used only for the rare case where the
