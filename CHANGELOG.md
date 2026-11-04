@@ -14,6 +14,25 @@ All notable changes to the Homey Overview script are documented here.
   More work than the items above, so parking it here rather than in
   the concrete backlog for now.
 
+## v1.8.0
+
+### Added
+- **Each app's current version is now captured in the daily snapshot,
+  for external tooling.** The script already tracked which apps have
+  an update *available*, but never recorded the actual version string
+  of each installed app anywhere — not in the email, not in the
+  snapshot. This blocked anyone wanting to build a history of app
+  versions over time (e.g. "when did app X update to version Y")
+  outside the script itself, since that data was never persisted.
+  New: an `appVersionsById` object (keyed by the same app ID used
+  everywhere else in the script: `{ name, version }`) is now built
+  alongside the existing app processing and saved into
+  `Overview_previous_snapshot` on every run. Not shown anywhere in the
+  email itself — this is purely for an external tool/script reading
+  the snapshot to build on. Can't be backfilled for past runs, since
+  the data simply wasn't recorded before this version; starts
+  accumulating from whenever you first run v1.8.0 onward.
+
 ## v1.7.2
 
 ### Fixed
