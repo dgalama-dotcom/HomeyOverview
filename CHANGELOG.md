@@ -14,6 +14,32 @@ All notable changes to the Homey Overview script are documented here.
   More work than the items above, so parking it here rather than in
   the concrete backlog for now.
 
+## v2.0.0
+
+### Added
+- **Long name lists now render in multiple columns, to cut down on
+  scrolling.** Forum feedback: lists like "Other devices" or "Stable
+  channel apps" can run to 50+ entries, making the email a long single
+  column of names. Fixed by giving the shared `ul()` helper (used for
+  every name list in the report) a CSS `column-count` style, splitting
+  longer lists into 2-4 columns. Deliberately implemented as a CSS
+  style on the `<ul>` rather than a "bulletproof" table-based column
+  layout, since this report is read in Gmail (web + apps), which fully
+  renders the embedded `<style>` block this report already depends on;
+  a table layout would add real complexity for no benefit there. Mail
+  clients without `column-count` support — notably Outlook desktop —
+  simply ignore the style and fall back to a single column, same as
+  before this version; no breakage, just no space saving in that
+  client.
+  Column count is chosen per list from two things: how many items it
+  has (more items benefit more from splitting — up to 4 columns past
+  28 items) and how long its longest entry is (a long entry, e.g. a
+  device name with an IP address in brackets, needs more width per
+  column, so the column count is capped down to keep that from wrapping
+  awkwardly mid-word — a single very long entry caps the whole list
+  back to one column regardless of item count). No new setting — this
+  is fully automatic and applies to every list the report renders.
+
 ## v1.8.1
 
 ### Fixed
