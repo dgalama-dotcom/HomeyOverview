@@ -1,4 +1,4 @@
-# Homey Overview v1.8.0 - scheduled system report by email
+# Homey Overview v2.0.0 - scheduled system report by email
 
 A HomeyScript that builds an HTML overview of your Homey system: system
 info and uptime, update availability, apps (with channel and
@@ -319,6 +319,15 @@ documentation.
 - HomeyScript scripts named `__mcp_run_*` are excluded from the script
   count; these are internal leftovers from certain AI/MCP bridge
   integrations, not real user scripts. Harmless if you don't use one.
+- Long name lists (apps, devices, Z-Wave/Zigbee nodes, etc.) render in
+  2-4 CSS columns instead of one long single-column list, to cut down on
+  scrolling (forum-requested, added in v2.0.0). This relies on CSS
+  `column-count` on the list, which Gmail (web and apps) fully supports.
+  Mail clients that don't support it — notably Outlook desktop — simply
+  fall back to a single column; nothing breaks, you just don't get the
+  space saving there. No setting for this — it's automatic, and picks
+  the column count per list based on both its length and how long its
+  entries are.
 
 ## License / sharing
 
