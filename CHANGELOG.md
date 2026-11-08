@@ -14,6 +14,32 @@ All notable changes to the Homey Overview script are documented here.
   More work than the items above, so parking it here rather than in
   the concrete backlog for now.
 
+## v1.8.1
+
+### Fixed
+- **Stray `<br>` after every line of the HTML email, causing visible
+  blank-row gaps between rows in some mail clients.** Reported
+  2026-11-05: the 3 and 4 November emails showed blank lines between
+  System-table rows that weren't there on 30 October or earlier.
+  Confirmed via the raw email source that a `<br>` tag had been
+  appended after literally every line of the HTML body (including
+  inside the `<style>` block) — invalid markup that different mail
+  clients render inconsistently, which is why it looked fine
+  sometimes and broken other times with byte-identical content.
+  Checked the script itself: it never emits `<br>` or does any
+  newline-to-`<br>` conversion anywhere. Root cause traced to the
+  "Email versturen" (`email.sender`) Homey app's v1.2.0 update
+  (30 October 2026, "updated for... the latest nodemailer"), which
+  split HTML sending out into its own dedicated action card
+  (`sendhtml`) alongside the pre-existing generic one (`sendmail`).
+  The script was still using the old generic `sendmail` card, which
+  appears to have started treating its input as plain text afterwards
+  and applying a newline-safety `<br>` conversion to the
+  already-HTML report. Fixed by switching the email-send call to the
+  app's new `homey:app:email.sender:sendhtml` action card instead of
+  `:sendmail` — same `mailto`/`subject`/`body` arguments, HTML passed
+  through unchanged. No other behavior change.
+
 ## v1.8.0
 
 ### Added
